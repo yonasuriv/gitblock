@@ -14,6 +14,7 @@
  * Usage:
  *   node githooker.mjs --install [path]      Install hooks (sets core.hooksPath)
  *   node githooker.mjs --install=<path>      Same, directory inline
+ *   node githooker.mjs --verify              Check whether the global hooks path is applied
  *   node githooker.mjs --wipe                Strip every trailer from commit history
  *   node githooker.mjs --yolo                Non-interactive: auto-accept prompts
  *   node githooker.mjs config <what> <value> Manage the installed configuration
@@ -74,6 +75,7 @@ function parseArgs(argv) {
     install: false,
     installDir: undefined,
     wipe: false,
+    verify: false,
     yolo: false,
     help: false,
     config: [],
@@ -95,6 +97,8 @@ function parseArgs(argv) {
       opts.installDir = arg.slice('--install='.length);
     } else if (arg === '--wipe') {
       opts.wipe = true;
+    } else if (arg === '--verify') {
+      opts.verify = true;
     } else if (arg === '--yolo') {
       opts.yolo = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -117,6 +121,7 @@ function printUsage() {
 Usage:
   node githooker.mjs --install [path]      Install hooks into "path" (default: ${DEFAULT_INSTALL_DIR}) and set core.hooksPath
   node githooker.mjs --install=<path>      Same, directory inline
+  node githooker.mjs --verify              Check whether the global hooks path is applied
   node githooker.mjs --wipe                Wipe all trailers from the commit history (destructive)
   node githooker.mjs --yolo                Non-interactive mode: auto-accept every prompt
   node githooker.mjs config <what> <value> Manage the installed configuration
@@ -129,6 +134,7 @@ Config management:
 Flags:
   --install [path]   Install the hooks. All install behavior only runs with this flag.
   --install=<path>   Same, with the target directory inline.
+  --verify           Report whether the global core.hooksPath is set and applied here.
   --wipe             Rewrite the whole commit history, stripping every Git trailer.
   --yolo             Accept install and wipe confirmations automatically (no prompts).
   -h, --help         Show this help.`);
@@ -274,22 +280,75 @@ function getEffectiveHooksPath() {
   return trimmed === '' ? null : trimmed;
 }
 
-function reportHooksPathStatus(installDir) {
+function parseEffectiveHooksPath() {
   const effective = getEffectiveHooksPath();
   if (!effective) {
+    return null;
+  }
+  const tabIdx = effective.indexOf('\t');
+  return {
+    origin: (tabIdx >= 0 ? effective.slice(0, tabIdx) : effective).trim(),
+    value: (tabIdx >= 0 ? effective.slice(tabIdx + 1) : '').trim(),
+  };
+}
+
+function reportHooksPathStatus(installDir) {
+  const parsed = parseEffectiveHooksPath();
+  if (!parsed) {
     console.log(`Hooks enabled: core.hooksPath = "${installDir}".`);
     return;
   }
 
-  const tabIdx = effective.indexOf('\t');
-  const origin = (tabIdx >= 0 ? effective.slice(0, tabIdx) : effective).trim();
-  const value = (tabIdx >= 0 ? effective.slice(tabIdx + 1) : '').trim();
-
-  if (path.resolve(value) === installDir) {
-    console.log(`Hooks enabled: core.hooksPath = "${installDir}" (${origin}).`);
+  if (path.resolve(parsed.value) === installDir) {
+    console.log(`Hooks enabled: core.hooksPath = "${installDir}" (${parsed.origin}).`);
   } else {
-    console.warn(`Hooks enabled globally, but "${origin}" overrides core.hooksPath here with "${value}".`);
+    console.warn(`Hooks enabled globally, but "${parsed.origin}" overrides core.hooksPath here with "${parsed.value}".`);
     console.warn('githooker will not run in this repository until that setting is removed.');
+  }
+}
+
+async function runVerify() {
+  const globalHooks = getGlobalHooksPath();
+  const globalConfigPath = path.join(os.homedir(), '.gitconfig');
+
+  console.log('githooker verification');
+  console.log(`  global config:    ${globalConfigPath} (${(await fileExists(globalConfigPath)) ? 'exists' : 'missing'})`);
+
+  if (!globalHooks) {
+    console.log('  global hooksPath: not set');
+    console.log('  status: hooks are NOT enabled globally.');
+    console.log('  Fix: run "node githooker.mjs --install".');
+    return;
+  }
+
+  const configTarget = path.join(path.dirname(globalHooks), 'config.yaml');
+  const hooksExist = await fileExists(globalHooks);
+  const configExists = await fileExists(configTarget);
+  const config = configExists ? await loadConfigFile(configTarget) : null;
+
+  console.log(`  global hooksPath: ${globalHooks} (${hooksExist ? 'exists' : 'MISSING'})`);
+  console.log(`  config file:      ${configTarget} (${configExists ? 'exists' : 'MISSING'})`);
+
+  if (!hooksExist || !configExists) {
+    console.log('  status: global hooksPath does not point to a githooker install.');
+    console.log('  Fix: run "node githooker.mjs --install".');
+    return;
+  }
+
+  if (config?.enabled === false) {
+    console.log('  status: installed but DISABLED (config "enabled" is false).');
+    console.log('  Fix: run "node githooker.mjs config global enable".');
+    return;
+  }
+
+  const parsed = parseEffectiveHooksPath();
+  if (parsed && path.resolve(parsed.value) === globalHooks) {
+    console.log(`  effective (here): ${parsed.origin} -> ${parsed.value}`);
+    console.log('  status: OK - global hooks path is applied.');
+  } else {
+    console.log(`  effective (here): ${parsed ? `${parsed.origin} -> ${parsed.value}` : 'not set'}`);
+    console.log(`  status: overridden in this repository (${parsed?.origin}); githooker is not active here.`);
+    console.log('  Other repositories still use the global hooks path unless they override it too.');
   }
 }
 
@@ -570,8 +629,13 @@ async function runWipe({ yolo }) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  if (opts.help || (!opts.install && !opts.wipe && !opts.configCommand)) {
+  if (opts.help || (!opts.install && !opts.wipe && !opts.verify && !opts.configCommand)) {
     printUsage();
+    return;
+  }
+
+  if (opts.verify) {
+    await runVerify();
     return;
   }
 

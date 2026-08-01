@@ -17,6 +17,8 @@ can be toggled without touching the hook scripts.
   every commit, or keeps them, depending on the configuration.
 - **Enabled switch** — set `enabled: false` and githooker removes the global
   `core.hooksPath`, so no hook runs at all.
+- **Verification** — `--verify` reports whether the global hooks path is set
+  and actually applied in the current repository.
 - **History rewrite** — `--wipe` rewrites the whole commit history (pushed and
   unpushed) and removes every trailer block.
 - **Non-interactive mode** — `--yolo` accepts every confirmation automatically
@@ -57,13 +59,25 @@ same directory that contains the hooks directory
 ### Verifying the install
 
 ```sh
+node githooker.mjs --verify
+```
+
+Prints where `core.hooksPath` is set globally, whether the hooks directory and
+`config.yaml` are in place, and whether the path is actually applied in the
+current repository. It flags the two ways an install can be inactive: the
+config has `enabled: false`, or a repository-local `core.hooksPath` (such as
+`.githooks`) overrides the global one.
+
+You can also check directly with git:
+
+```sh
 git config --show-origin --get core.hooksPath
 ```
 
-After installing, this shows where the hooks path is enabled and its origin
-(e.g. `file:/home/you/.gitconfig /home/you/.local/opt/githooker/hooks`). If a
-repository-local `core.hooksPath` (such as `.githooks`) is set, it takes
-precedence over the global one; githooker prints a warning when that happens.
+A global `core.hooksPath` applies to **every** repository for your user. The
+only exception is a repository that sets its own local `core.hooksPath` in
+`.git/config` — that value takes precedence and disables githooker for that
+repository alone.
 
 ### Custom location
 

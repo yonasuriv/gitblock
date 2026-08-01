@@ -46,7 +46,8 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
 const SOURCE_HOOKS_DIR = path.join(SCRIPT_DIR, 'hooks');
 const SOURCE_CONFIG = path.join(SCRIPT_DIR, 'config', 'default.yaml');
-const DEFAULT_INSTALL_DIR = path.join(os.homedir(), '.git', 'hooks');
+const DEFAULT_INSTALL_BASE = path.join(os.homedir(), '.local', 'opt', 'githooker');
+const DEFAULT_INSTALL_DIR = path.join(DEFAULT_INSTALL_BASE, 'hooks');
 const HOOK_FILES = ['validate-commit.mjs', 'prepare-commit-msg', 'commit-msg'];
 const CONFIG_KEYS = ['enabled', 'logging', 'trailer', 'verbose'];
 
@@ -262,12 +263,42 @@ function unsetGlobalHooksPath() {
   return result.status === 0 || result.status === 5;
 }
 
+function getEffectiveHooksPath() {
+  const result = spawnSync('git', ['config', '--show-origin', '--get', 'core.hooksPath'], {
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const trimmed = result.stdout.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function reportHooksPathStatus(installDir) {
+  const effective = getEffectiveHooksPath();
+  if (!effective) {
+    console.log(`Hooks enabled: core.hooksPath = "${installDir}".`);
+    return;
+  }
+
+  const tabIdx = effective.indexOf('\t');
+  const origin = (tabIdx >= 0 ? effective.slice(0, tabIdx) : effective).trim();
+  const value = (tabIdx >= 0 ? effective.slice(tabIdx + 1) : '').trim();
+
+  if (path.resolve(value) === installDir) {
+    console.log(`Hooks enabled: core.hooksPath = "${installDir}" (${origin}).`);
+  } else {
+    console.warn(`Hooks enabled globally, but "${origin}" overrides core.hooksPath here with "${value}".`);
+    console.warn('githooker will not run in this repository until that setting is removed.');
+  }
+}
+
 async function findConfigPath() {
   const hooksPath = getGlobalHooksPath();
   if (hooksPath) {
     return path.join(hooksPath, '..', 'config.yaml');
   }
-  return path.join(os.homedir(), '.git', 'config.yaml');
+  return path.join(DEFAULT_INSTALL_BASE, 'config.yaml');
 }
 
 function normalizeSetting(setting) {
@@ -310,8 +341,9 @@ async function handleConfigCommand(args) {
 
     if (value) {
       const installDir = path.join(path.dirname(configFile), 'hooks');
-      setGlobalHooksPath(installDir);
-      console.log(`Global hooks enabled: core.hooksPath = "${installDir}".`);
+      if (setGlobalHooksPath(installDir)) {
+        reportHooksPathStatus(installDir);
+      }
     } else {
       unsetGlobalHooksPath();
       console.log('Global hooks disabled: core.hooksPath removed.');
@@ -347,8 +379,9 @@ async function handleConfigCommand(args) {
   if (setting === 'enabled') {
     if (value) {
       const installDir = path.join(path.dirname(configFile), 'hooks');
-      setGlobalHooksPath(installDir);
-      console.log(`"enabled" set to true; core.hooksPath = "${installDir}".`);
+      if (setGlobalHooksPath(installDir)) {
+        reportHooksPathStatus(installDir);
+      }
     } else {
       unsetGlobalHooksPath();
       console.log('"enabled" set to false; core.hooksPath removed.');
@@ -416,8 +449,8 @@ async function runInstall(requestedDir, { yolo }) {
   if (config.enabled === false) {
     unsetGlobalHooksPath();
     console.log(`Hooks installed to "${installDir}" but left disabled: config "enabled" is false.`);
-  } else {
-    setGlobalHooksPath(installDir);
+  } else if (setGlobalHooksPath(installDir)) {
+    reportHooksPathStatus(installDir);
   }
 
   console.log(`CLI copied to "${binTarget}"`);
@@ -492,8 +525,9 @@ export function stripTrailers(message) {
 }
 
 async function runWipe({ yolo }) {
+  const cwd = process.cwd();
   const ok = await askConfirm(
-    'This will wipe all trailers from your commit history, this action is destructive for contributors, do you want to proceed? [y/N]: ',
+    `This will wipe all trailers from the commit history in "${cwd}", this action is destructive for contributors, do you want to proceed? [y/N]: `,
     { yolo, defaultYes: false },
   );
   if (!ok) {

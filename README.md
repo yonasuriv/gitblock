@@ -49,10 +49,21 @@ script without any flags only prints the help screen.
 node githooker.mjs --install
 ```
 
-Copies the hooks into `$HOME/.git/hooks`, the CLI itself into
-`$HOME/.git/bin/githooker.mjs`, places `config.yaml` in the same directory
-that contains the hooks directory (`$HOME/.git/config.yaml`), and sets the
-global Git hooks path.
+Copies the hooks into `$HOME/.local/opt/githooker/hooks`, the CLI itself into
+`$HOME/.local/opt/githooker/bin/githooker.mjs`, places `config.yaml` in the
+same directory that contains the hooks directory
+(`$HOME/.local/opt/githooker/config.yaml`), and sets the global Git hooks path.
+
+### Verifying the install
+
+```sh
+git config --show-origin --get core.hooksPath
+```
+
+After installing, this shows where the hooks path is enabled and its origin
+(e.g. `file:/home/you/.gitconfig /home/you/.local/opt/githooker/hooks`). If a
+repository-local `core.hooksPath` (such as `.githooks`) is set, it takes
+precedence over the global one; githooker prints a warning when that happens.
 
 ### Custom location
 
@@ -105,7 +116,8 @@ node githooker.mjs config
 
 Trailer blocks that githooker normally strips during commits may already exist
 in historical commits. `--wipe` rewrites every commit in the repository
-(pushed and unpushed) and removes the trailers.
+(pushed and unpushed) and removes the trailers. The confirmation prompt shows
+the current working directory it is about to rewrite.
 
 ```sh
 node githooker.mjs --wipe
@@ -137,6 +149,6 @@ node githooker.mjs config global disable
 Or, to also remove the hooks and config entirely:
 
 ```sh
-rm -rf "$HOME/.git/hooks" "$HOME/.git/bin" "$HOME/.git/config.yaml"
+rm -rf "$HOME/.local/opt/githooker"
 git config --global --unset core.hooksPath
 ```

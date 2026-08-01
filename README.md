@@ -56,6 +56,10 @@ Copies the hooks into `$HOME/.local/opt/githooker/hooks`, the CLI itself into
 same directory that contains the hooks directory
 (`$HOME/.local/opt/githooker/config.yaml`), and sets the global Git hooks path.
 
+A `githooker` command is symlinked into `$HOME/.local/bin`, so the CLI is
+available as `githooker` from anywhere (make sure `$HOME/.local/bin` is on
+your `PATH`).
+
 ### Verifying the install
 
 ```sh
@@ -164,5 +168,6 @@ Or, to also remove the hooks and config entirely:
 
 ```sh
 rm -rf "$HOME/.local/opt/githooker"
+rm -f "$HOME/.local/bin/githooker"
 git config --global --unset core.hooksPath
 ```

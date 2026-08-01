@@ -31,6 +31,7 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import {
   access,
   chmod,
@@ -40,6 +41,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 
@@ -494,6 +496,27 @@ async function runInstall(requestedDir, { yolo }) {
   await copyFile(SCRIPT_PATH, binTarget);
   await chmod(binTarget, 0o755);
 
+  const binLink = path.join(os.homedir(), '.local', 'bin', 'githooker');
+  await mkdir(path.dirname(binLink), { recursive: true });
+  try {
+    await symlink(binTarget, binLink, 'file');
+    console.log(`Linked "githooker" into PATH as "${binLink}".`);
+  } catch (err) {
+    if (err.code !== 'EEXIST') {
+      console.warn(`Could not link "githooker" into PATH: ${err.message}`);
+    } else {
+      let pointsAt = null;
+      try {
+        pointsAt = realpathSync(binLink);
+      } catch {
+        // Broken symlink; leave it for the user to inspect.
+      }
+      if (pointsAt !== binTarget) {
+        console.warn(`"${binLink}" already exists but does not point to "${binTarget}".`);
+      }
+    }
+  }
+
   if (await fileExists(configTarget)) {
     console.log(`Config already present, keeping "${configTarget}".`);
   } else {
@@ -654,7 +677,8 @@ async function main() {
 }
 
 // Only run as a CLI entry point. Importing this module (e.g. from the wipe
-// filter script) must not trigger main().
-if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
+// filter script) must not trigger main(). Compare resolved paths so the
+// installed "githooker" symlink also counts as the entry point.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(SCRIPT_PATH)) {
   await main();
 }

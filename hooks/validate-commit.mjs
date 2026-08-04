@@ -85,8 +85,16 @@ async function removeTrailers(filePath, config) {
     return;
   }
 
+  // The first line of a commit message is always the subject, never a
+  // trailer. If the trailer block reaches all the way back to the start of
+  // the message, the subject itself is being misread as a trailer (e.g. a
+  // conventional-commit subject like "chore: update") — keep it.
+  if (cursor === 0) {
+    return;
+  }
+
   // A valid trailer block must be separated from the body by a blank line.
-  if (cursor > 0 && lines[cursor - 1].trim() !== '') {
+  if (lines[cursor - 1].trim() !== '') {
     return;
   }
 

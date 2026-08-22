@@ -933,24 +933,30 @@ async function runUninstall({ scope, yolo }) {
 // POSIX awk port of stripTrailers, used as the --wipe msg-filter so history
 // rewriting needs no Node runtime. Must stay behaviorally identical to
 // stripTrailers; tests/wipe-filter.test.mjs asserts output parity.
-export const AWK_STRIP_TRAILERS = `{
+// Classification uses a \r-normalized copy of each line so CRLF messages are
+// handled like stripTrailers, while the original lines are printed unchanged.
+// Known divergence: input lacking a final newline gets one added by awk's
+// print (stripTrailers would return it as-is). Not portable to fix in POSIX
+// awk; git msg-filter input always ends with a newline.
+export const AWK_STRIP_TRAILERS = `function norm(s) { sub(/\\r$/, "", s); return s }
+{
   lines[NR] = $0
 }
 END {
     n = NR
-    while (n > 0 && lines[n] ~ /^[ \\t]*$/) n--
+    while (n > 0 && norm(lines[n]) ~ /^[ \\t]*$/) n--
     if (n == 0) { for (i = 1; i <= NR; i++) print lines[i]; exit }
     cur = n; cnt = 0
     while (cur > 0) {
-      while (cur > 0 && lines[cur] ~ /^[ \\t]/) cur--
+      while (cur > 0 && norm(lines[cur]) ~ /^[ \\t]/) cur--
       if (cur == 0) break
-      if (lines[cur] !~ /^[^ \\t:]+[ \\t]*:/) break
+      if (norm(lines[cur]) !~ /^[^ \\t:]+[ \\t]*:/) break
       cnt++; cur--
     }
     if (cnt == 0 || cur == 0) { for (i = 1; i <= NR; i++) print lines[i]; exit }
-    if (lines[cur] !~ /^[ \\t]*$/) { for (i = 1; i <= NR; i++) print lines[i]; exit }
+    if (norm(lines[cur]) !~ /^[ \\t]*$/) { for (i = 1; i <= NR; i++) print lines[i]; exit }
     end = cur - 1
-    while (end > 0 && lines[end] ~ /^[ \\t]*$/) end--
+    while (end > 0 && norm(lines[end]) ~ /^[ \\t]*$/) end--
     for (i = 1; i <= end; i++) print lines[i]
 }`;
 

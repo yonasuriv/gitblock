@@ -12,6 +12,13 @@ const FIXTURES = [
   ['subject\n\nbody\nSigned-off-by: X <x@y.z>\n', 'subject\n\nbody\nSigned-off-by: X <x@y.z>\n'],
   ['s1\n\nA: b\nC: d\n\n\n', 's1\n'],
   ['just a subject\n', 'just a subject\n'],
+  ['subject only\n', 'subject only\n'],
+  [
+    'subject\n\nCo-authored-by: A <a@x.y>\n\tcontinued value\nSigned-off-by: X <x@y.z>\n',
+    'subject\n',
+  ],
+  ['subject\r\n\r\nCo-authored-by: B <b@x.y>\r\n', 'subject\r\n'],
+  ['subject\n\nbody without trailers\n', 'subject\n\nbody without trailers\n'],
 ];
 
 let filterFile;

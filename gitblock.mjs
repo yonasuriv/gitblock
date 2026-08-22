@@ -31,7 +31,7 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { realpathSync } from 'node:fs';
+import { realpathSync, renameSync } from 'node:fs';
 import {
   access,
   chmod,
@@ -1153,7 +1153,106 @@ export async function fetchLatestVersion(fetchImpl = fetch) {
   }
 }
 
+// Release asset name for a version/platform/arch, matching the release
+// pipeline: gitblock-v<VERSION>-<os>-<arch>[.exe] (win32 -> "win" + ".exe").
+export function assetName(version, platform, arch) {
+  const osName = platform === 'win32' ? 'win' : platform;
+  const ext = platform === 'win32' ? '.exe' : '';
+  return `gitblock-v${version}-${osName}-${arch}${ext}`;
+}
+
+// Swap the running binary for a freshly downloaded one. POSIX allows renaming
+// over the executing file (atomic); Windows does not, so move the old binary
+// aside first (cleaned up on next startup).
+export function swapBinary(execPath, newFile, platform) {
+  if (platform === 'win32') {
+    renameSync(execPath, `${execPath}.old`);
+  }
+  renameSync(newFile, execPath);
+}
+
+async function runCheckUpdate({ fetchImpl }) {
+  const latest = await fetchLatestVersion(fetchImpl);
+  if (latest === null) {
+    console.warn('Warning: could not reach the registry to check for updates.');
+    return;
+  }
+  if (isNewerVersion(latest, VERSION)) {
+    console.log(`New version available: ${VERSION} -> ${latest}`);
+    console.log('Run "gitblock --update" to install it.');
+  } else {
+    console.log(`gitblock is up to date (${VERSION}).`);
+  }
+}
+
+async function runUpdate({ fetchImpl }) {
+  const channel = detectChannel(process.argv[1], process.execPath, DEFAULT_INSTALL_BASE);
+
+  if (channel === 'manual') {
+    console.log('This copy lives in ~/.local/opt/gitblock. Reinstall via npm or a Release binary:');
+    console.log('  npm install -g gitblock');
+    return;
+  }
+  if (channel === 'source') {
+    console.log(`Running from a source checkout (${path.dirname(SCRIPT_PATH)}).`);
+    console.log('Update with git pull in that directory.');
+    return;
+  }
+
+  const latest = await fetchLatestVersion(fetchImpl);
+  if (latest === null) {
+    console.error('Error: could not reach the registry.');
+    process.exitCode = 1;
+    return;
+  }
+  if (!isNewerVersion(latest, VERSION)) {
+    console.log(`gitblock is up to date (${VERSION}).`);
+    return;
+  }
+
+  if (channel === 'npm') {
+    const r = spawnSync('npm', ['install', '-g', 'gitblock@latest'], { stdio: 'inherit' });
+    if (r.status !== 0) process.exitCode = r.status ?? 1;
+    else console.log(`Updated gitblock to ${latest}.`);
+    return;
+  }
+
+  // Binary channel: download, verify it executes, then atomically swap.
+  const url =
+    `https://github.com/yonasuriv/gitblock/releases/download/v${latest}/` +
+    assetName(latest, process.platform, process.arch);
+  let body;
+  try {
+    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(120_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    body = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    console.error(`Error downloading update: ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const dir = path.dirname(process.execPath);
+  const tmpBin = path.join(dir, `.gitblock-update-${process.pid}`);
+  await writeFile(tmpBin, body, { mode: 0o755 });
+  const probe = spawnSync(tmpBin, ['--version'], { encoding: 'utf8' });
+  if (probe.status !== 0) {
+    await rm(tmpBin, { force: true });
+    console.error('Error: downloaded binary failed to execute; aborting update.');
+    process.exitCode = 1;
+    return;
+  }
+  swapBinary(process.execPath, tmpBin, process.platform);
+  console.log(`Updated gitblock to ${latest}.`);
+}
+
 async function main() {
+  // Best-effort cleanup of the previous binary moved aside by a Windows
+  // self-update (renameSync cannot replace a running executable there).
+  if (process.platform === 'win32') {
+    rm(`${process.execPath}.old`, { force: true }).catch(() => {});
+  }
+
   const opts = parseArgs(process.argv.slice(2));
 
   if (opts.help
@@ -1167,6 +1266,9 @@ async function main() {
     console.log(`gitblock ${VERSION}`);
     return;
   }
+
+  if (opts.checkUpdate) { await runCheckUpdate({}); return; }
+  if (opts.update)     { await runUpdate({}); return; }
 
   const scope = await detectScope(opts.local ? 'local' : opts.global ? 'global' : undefined);
 

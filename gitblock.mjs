@@ -31,7 +31,7 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { realpathSync, renameSync } from 'node:fs';
+import { existsSync, realpathSync, renameSync } from 'node:fs';
 import {
   access,
   chmod,
@@ -164,6 +164,13 @@ Flags:
   --wipe             Rewrite the whole commit history: strip every Git trailer and
                      reset each commit's author/committer to your git identity.
   --yolo             Accept install and wipe confirmations automatically (no prompts).
+  --uninstall        Remove the gitblock hooks (global, or local with --local).
+  --local            Operate on this repository's .githooks install instead of the global one.
+  --global           Force the global scope regardless of any local install.
+  --force            Overwrite foreign files during install (backing them up first).
+  --version          Print the gitblock version and exit.
+  --check-update     Check the registry for a newer gitblock release.
+  --update           Download and install a newer gitblock release.
   -h, --help         Show this help.`);
 }
 
@@ -1166,13 +1173,23 @@ export function assetName(version, platform, arch) {
 // aside first (cleaned up on next startup).
 export function swapBinary(execPath, newFile, platform) {
   if (platform === 'win32') {
-    renameSync(execPath, `${execPath}.old`);
+    const backup = `${execPath}.old`;
+    renameSync(execPath, backup);
+    try {
+      renameSync(newFile, execPath);
+    } catch (err) {
+      // The running executable is gone; restore it before giving up so the
+      // install never ends up without a working binary.
+      renameSync(backup, execPath);
+      throw err;
+    }
+  } else {
+    renameSync(newFile, execPath);
   }
-  renameSync(newFile, execPath);
 }
 
-async function runCheckUpdate({ fetchImpl }) {
-  const latest = await fetchLatestVersion(fetchImpl);
+async function runCheckUpdate() {
+  const latest = await fetchLatestVersion();
   if (latest === null) {
     console.warn('Warning: could not reach the registry to check for updates.');
     return;
@@ -1185,7 +1202,7 @@ async function runCheckUpdate({ fetchImpl }) {
   }
 }
 
-async function runUpdate({ fetchImpl }) {
+async function runUpdate() {
   const channel = detectChannel(process.argv[1], process.execPath, DEFAULT_INSTALL_BASE);
 
   if (channel === 'manual') {
@@ -1199,7 +1216,7 @@ async function runUpdate({ fetchImpl }) {
     return;
   }
 
-  const latest = await fetchLatestVersion(fetchImpl);
+  const latest = await fetchLatestVersion();
   if (latest === null) {
     console.error('Error: could not reach the registry.');
     process.exitCode = 1;
@@ -1236,7 +1253,8 @@ async function runUpdate({ fetchImpl }) {
   const tmpBin = path.join(dir, `.gitblock-update-${process.pid}`);
   await writeFile(tmpBin, body, { mode: 0o755 });
   const probe = spawnSync(tmpBin, ['--version'], { encoding: 'utf8' });
-  if (probe.status !== 0) {
+  const versionLine = probe.stdout?.trim() ?? '';
+  if (probe.status !== 0 || !/^gitblock \d+\.\d+\.\d+$/.test(versionLine)) {
     await rm(tmpBin, { force: true });
     console.error('Error: downloaded binary failed to execute; aborting update.');
     process.exitCode = 1;
@@ -1249,7 +1267,9 @@ async function runUpdate({ fetchImpl }) {
 async function main() {
   // Best-effort cleanup of the previous binary moved aside by a Windows
   // self-update (renameSync cannot replace a running executable there).
-  if (process.platform === 'win32') {
+  // Only safe once the current binary is back in place; otherwise the .old
+  // file may be the last good copy (see swapBinary's rollback).
+  if (process.platform === 'win32' && existsSync(process.execPath)) {
     rm(`${process.execPath}.old`, { force: true }).catch(() => {});
   }
 
@@ -1267,8 +1287,8 @@ async function main() {
     return;
   }
 
-  if (opts.checkUpdate) { await runCheckUpdate({}); return; }
-  if (opts.update)     { await runUpdate({}); return; }
+  if (opts.checkUpdate) { await runCheckUpdate(); return; }
+  if (opts.update)     { await runUpdate(); return; }
 
   const scope = await detectScope(opts.local ? 'local' : opts.global ? 'global' : undefined);
 

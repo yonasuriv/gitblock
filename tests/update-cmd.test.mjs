@@ -26,3 +26,16 @@ test('swapBinary replaces target on posix', async (t) => {
   swapBinary(target, fresh, 'linux');
   assert.equal(await readFile(target, 'utf8'), 'new');
 });
+
+test('swapBinary restores the old binary when the win32 second rename fails', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'gb-swap-'));
+  t.after(() => spawnSync('rm', ['-rf', dir]));
+  const target = path.join(dir, 'gitblock.exe');
+  await writeFile(target, 'old', { mode: 0o755 });
+  // Missing newFile makes the second rename fail exactly as it would when
+  // the freshly downloaded binary cannot be moved into place.
+  const missing = path.join(dir, 'does-not-exist');
+  assert.throws(() => swapBinary(target, missing, 'win32'));
+  assert.equal(await readFile(target, 'utf8'), 'old');
+  assert.equal(spawnSync('test', ['-e', `${target}.old`]).status, 1);
+});

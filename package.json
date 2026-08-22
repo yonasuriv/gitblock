@@ -1,0 +1,12 @@
+{
+  "name": "gitblock",
+  "version": "1.0.0",
+  "description": "Zero-dependency Git hook installer for trailer cleanup, plus a history rewriter that wipes trailers and resets authorship.",
+  "type": "module",
+  "bin": { "gitblock": "./gitblock.mjs" },
+  "files": ["gitblock.mjs", "hooks/", "config/default.yaml", "README.md"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test 'tests/*.test.mjs'" },
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/yonasuriv/gitblock" }
+}

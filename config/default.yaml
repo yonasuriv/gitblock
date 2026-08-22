@@ -1,4 +1,4 @@
 enabled: true
-logging: true
+logging: false
 trailer: false
 verbose: false

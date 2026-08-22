@@ -1,0 +1,55 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: bun-linux-x64,    asset: linux-x64 }
+          - { os: ubuntu-latest,  target: bun-linux-arm64,  asset: linux-arm64 }
+          - { os: macos-latest,   target: bun-darwin-x64,   asset: darwin-x64 }
+          - { os: macos-latest,   target: bun-darwin-arm64, asset: darwin-arm64 }
+          - { os: windows-latest, target: bun-windows-x64,  asset: win-x64.exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun build --compile --target ${{ matrix.target }} ./gitblock.mjs --outfile gitblock-${{ github.ref_name }}-${{ matrix.asset }}
+      - name: Smoke test
+        run: |
+          ./gitblock-${{ github.ref_name }}-${{ matrix.asset }} --version
+          ./gitblock-${{ github.ref_name }}-${{ matrix.asset }} --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitblock-${{ matrix.asset }}
+          path: gitblock-*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+      - name: Assert tag matches VERSION constant
+        run: |
+          V=$(grep -oP "VERSION = '\K[^']+" gitblock.mjs)
+          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != v$V"; exit 1; }
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: gitblock-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

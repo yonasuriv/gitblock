@@ -14,7 +14,7 @@ test('config auto-targets local install when present', async (t) => {
   // Default ships trailer:false, so an exact match proves the write happened
   // here and nowhere else.
   const cfg = await readFile(path.join(repo, '.githooks', 'config.yaml'), 'utf8');
-  assert.equal(cfg, 'enabled: true\nlogging: true\ntrailer: true\nverbose: false\n');
+  assert.equal(cfg, 'enabled: true\nlogging: false\ntrailer: true\nverbose: false\n');
 });
 
 test('config global disable targets the global config, not the local one', async (t) => {

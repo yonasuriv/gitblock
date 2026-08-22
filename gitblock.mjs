@@ -38,6 +38,7 @@ import {
   copyFile,
   mkdir,
   mkdtemp,
+  rmdir,
   readFile,
   readdir,
   rm,
@@ -718,6 +719,84 @@ async function runLocalInstall({ yolo, force = false }) {
   }
 }
 
+function unsetLocalHooksPath() {
+  const result = spawnSync('git', ['config', '--unset', 'core.hooksPath'], { encoding: 'utf8' });
+  // Exit code 5 means the key was not set; fine.
+  return result.status === 0 || result.status === 5;
+}
+
+async function runUninstall({ scope, yolo }) {
+  if (scope === 'local') {
+    const repoRoot = getRepoRoot();
+    if (!repoRoot) {
+      console.error('Error: not inside a Git repository.');
+      process.exitCode = 1;
+      return;
+    }
+    const ok = await askConfirm(`Remove local gitblock hooks in "${repoRoot}"? [y/N] `, { yolo, defaultYes: false });
+    if (!ok) {
+      console.log('Uninstall cancelled.');
+      return;
+    }
+    unsetLocalHooksPath();
+
+    const githooksDir = path.join(repoRoot, '.githooks');
+    let leftovers = [];
+    let entries = null;
+    try {
+      entries = await readdir(githooksDir);
+    } catch {
+      // .githooks missing entirely; nothing to clean.
+    }
+
+    if (entries !== null) {
+      let foreignLeft = false;
+      for (const entry of entries) {
+        const full = path.join(githooksDir, entry);
+        if (entry === 'config.yaml') continue;
+        const src = SOURCE_HOOKS_DIR && HOOK_FILES.includes(entry)
+          ? path.join(SOURCE_HOOKS_DIR, entry)
+          : null;
+        if (src && (await classifyTarget(full, src)) === 'ours') {
+          await rm(full);
+        } else {
+          leftovers.push(entry);
+          foreignLeft = true;
+        }
+      }
+
+      // When gitblock owns everything else, an untouched default config goes
+      // too so the directory can be removed. Any foreign file (or a
+      // user-modified config) keeps the whole directory, config included.
+      const configFile = path.join(githooksDir, 'config.yaml');
+      if (entries.includes('config.yaml')) {
+        if (!foreignLeft && (await classifyTarget(configFile, SOURCE_CONFIG)) === 'ours') {
+          await rm(configFile);
+        } else {
+          leftovers.unshift('config.yaml');
+        }
+      }
+
+      if (leftovers.length > 0) {
+        console.log(`Kept non-gitblock files in .githooks: ${leftovers.join(', ')}`);
+      }
+      // Remove the dir itself only when empty.
+      try {
+        await rmdir(githooksDir);
+        console.log('Removed empty .githooks directory.');
+      } catch {
+        // Not empty or gone; leave as reported above.
+      }
+    }
+    console.log('Local hooks removed: core.hooksPath cleared.');
+    return;
+  }
+
+  if (unsetGlobalHooksPath()) {
+    console.log('Global hooks disabled: core.hooksPath removed.');
+  }
+}
+
 /**
  * Removes the final Git trailer block from a commit message. Returns the
  * message unchanged when no trailer block is present.
@@ -902,6 +981,12 @@ async function main() {
 
   if (opts.configCommand) {
     await handleConfigCommand(opts.config);
+    return;
+  }
+
+  if (opts.uninstall) {
+    const scope = opts.local && !opts.global ? 'local' : 'global';
+    await runUninstall({ scope, yolo: opts.yolo });
     return;
   }
 

@@ -1126,7 +1126,7 @@ export function detectChannel(argv1, execPath, installBase) {
   if (!argv1 || argv1 === execPath) return 'binary';
   const p = path.resolve(argv1);
   if (p.split(path.sep).includes('node_modules')) return 'npm';
-  if (installBase && p.startsWith(installBase)) return 'manual';
+  if (installBase && (p === installBase || p.startsWith(installBase + path.sep))) return 'manual';
   return 'source';
 }
 

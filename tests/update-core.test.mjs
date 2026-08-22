@@ -21,6 +21,13 @@ test('manual channel under the opt layout', () => {
   assert.equal(detectChannel(path.join(base, 'bin', 'gitblock.mjs'), '/usr/bin/node', base), 'manual');
 });
 
+test('sibling directory of install base is not manual', () => {
+  assert.equal(
+    detectChannel(path.join(`${base}-old`, 'bin', 'gitblock.mjs'), '/usr/bin/node', base),
+    'source',
+  );
+});
+
 test('source channel otherwise', () => {
   assert.equal(detectChannel('/work/gitblock/gitblock.mjs', '/usr/bin/node', base), 'source');
 });

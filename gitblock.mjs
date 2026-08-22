@@ -385,6 +385,46 @@ function parseEffectiveHooksPath() {
   };
 }
 
+// Auto-detect which install governs this repository. Explicit flags win.
+// 'local' when repo-local core.hooksPath points at an existing directory
+// containing at least one of HOOK_FILES; otherwise 'global'.
+export async function detectScope(explicit) {
+  if (explicit === 'local') return 'local';
+  if (explicit === 'global') return 'global';
+
+  const parsed = parseEffectiveHooksPath();
+  const repoRoot = getRepoRoot();
+  if (!parsed || !repoRoot) {
+    return 'global';
+  }
+
+  // A repo-local origin reads like "file:<repoRoot>/.git/config" (sometimes
+  // printed relative to the repository root).
+  const originFile = parsed.origin.startsWith('file:') ? parsed.origin.slice('file:'.length) : null;
+  if (!originFile) {
+    return 'global';
+  }
+  const resolvedOrigin = path.isAbsolute(originFile) ? originFile : path.resolve(repoRoot, originFile);
+  if (resolvedOrigin !== path.join(repoRoot, '.git', 'config')) {
+    return 'global';
+  }
+
+  const hooksDir = path.isAbsolute(parsed.value)
+    ? parsed.value
+    : path.resolve(repoRoot, parsed.value);
+  for (const file of HOOK_FILES) {
+    if (await fileExists(path.join(hooksDir, file))) {
+      return 'local';
+    }
+  }
+  return 'global';
+}
+
+function localConfigPath() {
+  const repoRoot = getRepoRoot();
+  return repoRoot ? path.join(repoRoot, '.githooks', 'config.yaml') : null;
+}
+
 function reportHooksPathStatus(installDir) {
   const parsed = parseEffectiveHooksPath();
   if (!parsed) {
@@ -400,7 +440,35 @@ function reportHooksPathStatus(installDir) {
   }
 }
 
-async function runVerify() {
+async function runVerify(scope) {
+  if (scope === 'local') {
+    console.log('gitblock verification (scope: local)');
+
+    const parsed = parseEffectiveHooksPath();
+    console.log(`  hooksPath (here): ${parsed ? `${parsed.value} (${parsed.origin})` : 'not set'}`);
+
+    const cfgPath = localConfigPath();
+    const cfgExists = cfgPath !== null && (await fileExists(cfgPath));
+    console.log(`  config file:      ${cfgPath ?? '(not inside a Git repository)'} (${cfgExists ? 'exists' : 'MISSING'})`);
+
+    if (!parsed || !cfgExists) {
+      console.log('  status: NOT active here.');
+      console.log('  Fix: run "node gitblock.mjs --install --local".');
+      return;
+    }
+
+    const config = await loadConfigFile(cfgPath);
+    if (config.enabled === false) {
+      console.log('  status: installed but DISABLED (config "enabled" is false).');
+      console.log('  Fix: run "node gitblock.mjs config enable".');
+      return;
+    }
+
+    console.log(`  effective (here): ${parsed.origin} -> ${parsed.value}`);
+    console.log('  status: OK - local hooks are applied.');
+    return;
+  }
+
   const globalHooks = getGlobalHooksPath();
   const globalConfigPath = path.join(os.homedir(), '.gitconfig');
 
@@ -445,7 +513,13 @@ async function runVerify() {
   }
 }
 
-async function findConfigPath() {
+async function findConfigPath(scope) {
+  if (scope === 'local') {
+    const local = localConfigPath();
+    if (local && (await fileExists(local))) {
+      return local;
+    }
+  }
   const hooksPath = getGlobalHooksPath();
   if (hooksPath) {
     return path.join(hooksPath, '..', 'config.yaml');
@@ -463,8 +537,8 @@ function normalizeSetting(setting) {
   return undefined;
 }
 
-async function handleConfigCommand(args) {
-  const configFile = await findConfigPath();
+async function handleConfigCommand(args, scope) {
+  const configFile = await findConfigPath(scope);
 
   if (args.length === 0) {
     if (await fileExists(configFile)) {
@@ -530,10 +604,18 @@ async function handleConfigCommand(args) {
 
   if (setting === 'enabled') {
     if (value) {
-      const installDir = path.join(path.dirname(configFile), 'hooks');
-      if (setGlobalHooksPath(installDir)) {
-        reportHooksPathStatus(installDir);
+      if (scope === 'local') {
+        setLocalHooksPath('.githooks');
+        console.log('Local hooks enabled: core.hooksPath = ".githooks".');
+      } else {
+        const installDir = path.join(path.dirname(configFile), 'hooks');
+        if (setGlobalHooksPath(installDir)) {
+          reportHooksPathStatus(installDir);
+        }
       }
+    } else if (scope === 'local') {
+      unsetLocalHooksPath();
+      console.log('"enabled" set to false; local core.hooksPath removed.');
     } else {
       unsetGlobalHooksPath();
       console.log('"enabled" set to false; core.hooksPath removed.');
@@ -974,13 +1056,15 @@ async function main() {
     return;
   }
 
+  const scope = await detectScope(opts.local ? 'local' : opts.global ? 'global' : undefined);
+
   if (opts.verify) {
-    await runVerify();
+    await runVerify(scope);
     return;
   }
 
   if (opts.configCommand) {
-    await handleConfigCommand(opts.config);
+    await handleConfigCommand(opts.config, scope);
     return;
   }
 

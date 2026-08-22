@@ -348,6 +348,19 @@ function unsetGlobalHooksPath() {
   return result.status === 0 || result.status === 5;
 }
 
+export function getRepoRoot() {
+  const result = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function setLocalHooksPath(value) {
+  const result = spawnSync('git', ['config', 'core.hooksPath', value], { stdio: 'inherit' });
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+  }
+  return result.status === 0;
+}
+
 function getEffectiveHooksPath() {
   const result = spawnSync('git', ['config', '--show-origin', '--get', 'core.hooksPath'], {
     encoding: 'utf8',
@@ -556,12 +569,10 @@ async function installHookFile(file, installDir, customGitDir) {
   }
 }
 
-async function runInstall(requestedDir, { yolo, force = false }) {
-  const installDir = path.resolve(requestedDir ?? DEFAULT_INSTALL_DIR);
-  const customGitDir = requestedDir ? path.dirname(installDir) : undefined;
-  const configTarget = path.join(path.dirname(installDir), 'config.yaml');
-
-  // Classify first: a foreign conflict aborts before any prompt or write.
+// Classify first: a foreign conflict aborts before any prompt or write.
+// Shared by the global and local installers; local installs pass no
+// customGitDir, so plain rendered-source comparison applies.
+async function findConflicts(installDir, customGitDir) {
   const conflicts = [];
   for (const file of HOOK_FILES) {
     let current;
@@ -575,6 +586,15 @@ async function runInstall(requestedDir, { yolo, force = false }) {
       conflicts.push(file);
     }
   }
+  return conflicts;
+}
+
+async function runInstall(requestedDir, { yolo, force = false }) {
+  const installDir = path.resolve(requestedDir ?? DEFAULT_INSTALL_DIR);
+  const customGitDir = requestedDir ? path.dirname(installDir) : undefined;
+  const configTarget = path.join(path.dirname(installDir), 'config.yaml');
+
+  const conflicts = await findConflicts(installDir, customGitDir);
 
   if (conflicts.length > 0 && !force) {
     console.error(`Error: refusing to overwrite foreign files in "${installDir}":`);
@@ -647,6 +667,55 @@ async function runInstall(requestedDir, { yolo, force = false }) {
 
   console.log(`CLI copied to "${binTarget}"`);
   console.log(`Config file at "${configTarget}"`);
+}
+
+async function runLocalInstall({ yolo, force = false }) {
+  const repoRoot = getRepoRoot();
+  if (!repoRoot) {
+    console.error('Error: not inside a Git repository; --local installs a repository.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const githooksDir = path.join(repoRoot, '.githooks');
+  const conflicts = await findConflicts(githooksDir);
+
+  if (conflicts.length > 0 && !force) {
+    console.error(`Error: refusing to overwrite foreign files in "${githooksDir}":`);
+    for (const file of conflicts) console.error(`  ${file}`);
+    console.error('Re-run with --force to back them up and overwrite.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const ok = await askConfirm(`Install Git hooks into "${githooksDir}"? [Y/n] `, { yolo, defaultYes: true });
+  if (!ok) {
+    console.log('Installation cancelled.');
+    return;
+  }
+
+  await mkdir(githooksDir, { recursive: true });
+
+  for (const file of HOOK_FILES) {
+    if (conflicts.includes(file)) {
+      const bak = await backupFile(path.join(githooksDir, file));
+      if (bak) console.log(`Backed up ${file} -> ${bak}`);
+    }
+    // No log baking for local installs: installed files stay identical to source.
+    await copyFile(path.join(SOURCE_HOOKS_DIR, file), path.join(githooksDir, file));
+    await chmod(path.join(githooksDir, file), 0o755);
+  }
+
+  const configFile = path.join(githooksDir, 'config.yaml');
+  if (await fileExists(configFile)) {
+    console.log(`Config already present, keeping "${configFile}".`);
+  } else {
+    await copyFile(SOURCE_CONFIG, configFile);
+  }
+
+  if (setLocalHooksPath('.githooks')) {
+    console.log(`Local hooks enabled: core.hooksPath = ".githooks" (${repoRoot}).`);
+  }
 }
 
 /**
@@ -837,7 +906,11 @@ async function main() {
   }
 
   if (opts.install) {
-    await runInstall(opts.installDir, { yolo: opts.yolo, force: opts.force });
+    if (opts.local && !opts.global) {
+      await runLocalInstall({ yolo: opts.yolo, force: opts.force });
+    } else {
+      await runInstall(opts.installDir, { yolo: opts.yolo, force: opts.force });
+    }
   }
 
   if (opts.wipe) {

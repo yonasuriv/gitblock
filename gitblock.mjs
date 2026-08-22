@@ -615,6 +615,12 @@ export function stripTrailers(message) {
     return message;
   }
 
+  // The first line is always the subject, never a trailer. A trailer block
+  // reaching back to the start means the subject was misread — keep it.
+  if (cursor === 0) {
+    return message;
+  }
+
   // A valid trailer block must be separated from the body by a blank line.
   if (cursor > 0 && lines[cursor - 1].trim() !== '') {
     return message;

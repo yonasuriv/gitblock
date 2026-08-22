@@ -20,7 +20,9 @@ can be toggled without touching the hook scripts.
 - **Verification** — `--verify` reports whether the global hooks path is set
   and actually applied in the current repository.
 - **History rewrite** — `--wipe` rewrites the whole commit history (pushed and
-  unpushed) and removes every trailer block.
+  unpushed): every trailer block is removed and each commit's author and
+  committer are reset to your git identity, so only the persona pushing
+  remains in the history.
 - **Non-interactive mode** — `--yolo` accepts every confirmation automatically
   for scripting and CI.
 - **Config CLI** — manage `logging`, `trailers`, `verbose`, and the global
@@ -130,17 +132,23 @@ node githooker.mjs config
 `config global disable` sets `enabled: false` and removes the global
 `core.hooksPath`; `config global enable` sets `enabled: true` and restores it.
 
-## Wiping trailers from history
+## Wiping trailers and authorship from history
 
 Trailer blocks that githooker normally strips during commits may already exist
 in historical commits. `--wipe` rewrites every commit in the repository
-(pushed and unpushed) and removes the trailers. The confirmation prompt shows
-the current working directory it is about to rewrite.
+(pushed and unpushed): it removes the trailers and resets each commit's
+author and committer to your `user.name` / `user.email` from git config
+(repo-local values take precedence over global ones), so only the persona
+pushing remains in the history. Commit dates are preserved. The confirmation
+prompt shows the current working directory it is about to rewrite.
 
 ```sh
 node githooker.mjs --wipe
 node githooker.mjs --wipe --yolo   # skip the confirmation
 ```
+
+`--wipe` refuses to run when `user.name` or `user.email` is not configured,
+since those values become the identity of every rewritten commit.
 
 > **Warning** — this rewrites commit SHAs and is destructive for everyone who
 > has cloned or pulled the repository. Coordinate with contributors and

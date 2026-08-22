@@ -15,7 +15,7 @@
  *   node githooker.mjs --install [path]      Install hooks (sets core.hooksPath)
  *   node githooker.mjs --install=<path>      Same, directory inline
  *   node githooker.mjs --verify              Check whether the global hooks path is applied
- *   node githooker.mjs --wipe                Strip every trailer from commit history
+ *   node githooker.mjs --wipe                Strip trailers and reset commit authorship in history
  *   node githooker.mjs --yolo                Non-interactive: auto-accept prompts
  *   node githooker.mjs config <what> <value> Manage the installed configuration
  *
@@ -124,7 +124,7 @@ Usage:
   node githooker.mjs --install [path]      Install hooks into "path" (default: ${DEFAULT_INSTALL_DIR}) and set core.hooksPath
   node githooker.mjs --install=<path>      Same, directory inline
   node githooker.mjs --verify              Check whether the global hooks path is applied
-  node githooker.mjs --wipe                Wipe all trailers from the commit history (destructive)
+  node githooker.mjs --wipe                Wipe trailers and reset commit authorship in history (destructive)
   node githooker.mjs --yolo                Non-interactive mode: auto-accept every prompt
   node githooker.mjs config <what> <value> Manage the installed configuration
 
@@ -137,7 +137,8 @@ Flags:
   --install [path]   Install the hooks. All install behavior only runs with this flag.
   --install=<path>   Same, with the target directory inline.
   --verify           Report whether the global core.hooksPath is set and applied here.
-  --wipe             Rewrite the whole commit history, stripping every Git trailer.
+  --wipe             Rewrite the whole commit history: strip every Git trailer and
+                     reset each commit's author/committer to your git identity.
   --yolo             Accept install and wipe confirmations automatically (no prompts).
   -h, --help         Show this help.`);
 }
@@ -607,9 +608,21 @@ export function stripTrailers(message) {
 }
 
 async function runWipe({ yolo }) {
+  const name = gitConfig('user.name');
+  const email = gitConfig('user.email');
+
+  if (!name || !email) {
+    console.error(
+      'Error: user.name and user.email must be set in git config before wiping;',
+      'they are used as the identity for every rewritten commit.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const cwd = process.cwd();
   const ok = await askConfirm(
-    `This will wipe all trailers from the commit history in "${cwd}", this action is destructive for contributors, do you want to proceed? [y/N]: `,
+    `This will wipe all trailers from the commit history in "${cwd}" and reset every commit's authorship to "${name} <${email}>", this action is destructive for contributors, do you want to proceed? [y/N]: `,
     { yolo, defaultYes: false },
   );
   if (!ok) {
@@ -633,9 +646,29 @@ async function runWipe({ yolo }) {
     `process.stdout.write(stripTrailers(input));\n`;
   await writeFile(filterFile, filterSource, 'utf8');
 
+  // The env-filter forces every rewritten commit to carry only the pushing
+  // persona's identity; git config resolves repo-local values over global ones.
+  const envFilter =
+    'export ' +
+    [
+      `GIT_AUTHOR_NAME=${shellQuote(name)}`,
+      `GIT_AUTHOR_EMAIL=${shellQuote(email)}`,
+      `GIT_COMMITTER_NAME=${shellQuote(name)}`,
+      `GIT_COMMITTER_EMAIL=${shellQuote(email)}`,
+    ].join(' ');
+
   const result = spawnSync(
     'git',
-    ['filter-branch', '--force', '--msg-filter', `node ${JSON.stringify(filterFile)}`, '--', '--all'],
+    [
+      'filter-branch',
+      '--force',
+      '--msg-filter',
+      `node ${JSON.stringify(filterFile)}`,
+      '--env-filter',
+      envFilter,
+      '--',
+      '--all',
+    ],
     { stdio: 'inherit', env: { ...process.env, FILTER_BRANCH_SQUELCH_WARNING: '1' } },
   );
 
@@ -646,7 +679,21 @@ async function runWipe({ yolo }) {
     return;
   }
 
-  console.log('Done. All trailers have been wiped from the commit history.');
+  console.log(
+    'Done. All trailers have been wiped and every commit is now authored by ' +
+      `"${name} <${email}>".`,
+  );
+}
+
+// Read a value from git config, repo-local first, then global.
+function gitConfig(key) {
+  const result = spawnSync('git', ['config', '--get', key], { encoding: 'utf8' });
+  return result.status === 0 ? result.stdout.trim() : '';
+}
+
+// Quote a value for safe use inside the env-filter shell snippet.
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
 }
 
 async function main() {

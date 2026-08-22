@@ -47,7 +47,7 @@ import {
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
-const SOURCE_HOOKS_DIR = path.join(SCRIPT_DIR, 'hooks');
+export const SOURCE_HOOKS_DIR = path.join(SCRIPT_DIR, 'hooks');
 const SOURCE_CONFIG = path.join(SCRIPT_DIR, 'config', 'default.yaml');
 const DEFAULT_INSTALL_BASE = path.join(os.homedir(), '.local', 'opt', 'gitblock');
 const DEFAULT_INSTALL_DIR = path.join(DEFAULT_INSTALL_BASE, 'hooks');
@@ -261,6 +261,34 @@ async function ensureConfig(configFile) {
   await mkdir(path.dirname(configFile), { recursive: true });
   await copyFile(SOURCE_CONFIG, configFile);
   console.log(`Created default config at "${configFile}".`);
+}
+
+export function normalizeContent(content) {
+  return content.replace(/\r\n/gu, '\n').replace(/\s+$/u, '');
+}
+
+// 'ours' | 'foreign' | 'absent'. Normalized compare keeps reinstalls idempotent.
+export async function classifyTarget(destPath, srcPath) {
+  let current;
+  try {
+    current = await readFile(destPath, 'utf8');
+  } catch {
+    return 'absent';
+  }
+  const source = await readFile(srcPath, 'utf8');
+  return normalizeContent(current) === normalizeContent(source) ? 'ours' : 'foreign';
+}
+
+// Copy an existing target aside before overwriting.
+export async function backupFile(destPath) {
+  try {
+    await readFile(destPath);
+  } catch {
+    return null;
+  }
+  const backup = `${destPath}.bak-${Math.floor(Date.now() / 1000)}`;
+  await copyFile(destPath, backup);
+  return backup;
 }
 
 function getGlobalHooksPath() {

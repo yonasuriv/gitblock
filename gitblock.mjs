@@ -930,6 +930,30 @@ async function runUninstall({ scope, yolo }) {
   }
 }
 
+// POSIX awk port of stripTrailers, used as the --wipe msg-filter so history
+// rewriting needs no Node runtime. Must stay behaviorally identical to
+// stripTrailers; tests/wipe-filter.test.mjs asserts output parity.
+export const AWK_STRIP_TRAILERS = `{
+  lines[NR] = $0
+}
+END {
+    n = NR
+    while (n > 0 && lines[n] ~ /^[ \\t]*$/) n--
+    if (n == 0) { for (i = 1; i <= NR; i++) print lines[i]; exit }
+    cur = n; cnt = 0
+    while (cur > 0) {
+      while (cur > 0 && lines[cur] ~ /^[ \\t]/) cur--
+      if (cur == 0) break
+      if (lines[cur] !~ /^[^ \\t:]+[ \\t]*:/) break
+      cnt++; cur--
+    }
+    if (cnt == 0 || cur == 0) { for (i = 1; i <= NR; i++) print lines[i]; exit }
+    if (lines[cur] !~ /^[ \\t]*$/) { for (i = 1; i <= NR; i++) print lines[i]; exit }
+    end = cur - 1
+    while (end > 0 && lines[end] ~ /^[ \\t]*$/) end--
+    for (i = 1; i <= end; i++) print lines[i]
+}`;
+
 /**
  * Removes the final Git trailer block from a commit message. Returns the
  * message unchanged when no trailer block is present.
@@ -1034,13 +1058,8 @@ async function runWipe({ yolo }) {
   }
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'gitblock-'));
-  const filterFile = path.join(tmpDir, 'strip-trailers.mjs');
-  const filterSource =
-    `import { stripTrailers } from ${JSON.stringify(SCRIPT_PATH)};\n` +
-    `let input = '';\n` +
-    `for await (const chunk of process.stdin) input += chunk;\n` +
-    `process.stdout.write(stripTrailers(input));\n`;
-  await writeFile(filterFile, filterSource, 'utf8');
+  const filterFile = path.join(tmpDir, 'strip-trailers.awk');
+  await writeFile(filterFile, AWK_STRIP_TRAILERS, 'utf8');
 
   // The env-filter forces every rewritten commit to carry only the pushing
   // persona's identity; git config resolves repo-local values over global ones.
@@ -1059,7 +1078,7 @@ async function runWipe({ yolo }) {
       'filter-branch',
       '--force',
       '--msg-filter',
-      `node ${JSON.stringify(filterFile)}`,
+      `awk -f ${JSON.stringify(filterFile)}`,
       '--env-filter',
       envFilter,
       '--',

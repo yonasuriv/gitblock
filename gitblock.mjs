@@ -92,6 +92,7 @@ export function parseArgs(argv) {
     update: false,
     config: [],
     configCommand: false,
+    unknown: [],
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -135,6 +136,8 @@ export function parseArgs(argv) {
       break;
     } else if (!arg.startsWith('-')) {
       opts.installDir = arg;
+    } else if (arg.startsWith('--')) {
+      opts.unknown.push(arg);
     }
   }
 
@@ -197,6 +200,25 @@ async function askConfirm(promptText, { yolo = false, defaultYes = false } = {})
   } finally {
     rl.close();
   }
+}
+
+// Compiled binaries carry no hooks/ or config/ directory on disk, so any
+// install attempt would crash with raw ENOENT stack traces. Detect that up
+// front and point users at the npm channel instead.
+export function findMissingSources() {
+  const missing = [];
+  if (!existsSync(SOURCE_HOOKS_DIR)) missing.push(SOURCE_HOOKS_DIR);
+  if (!existsSync(SOURCE_CONFIG)) missing.push(SOURCE_CONFIG);
+  return missing;
+}
+
+function reportMissingSources() {
+  console.error('Error: this gitblock installation has no hook sources on disk.');
+  console.error('Compiled binaries cannot install hooks directly; install via npm instead:');
+  console.error('  npm install -g gitblock');
+  console.error('then run:');
+  console.error('  gitblock --install');
+  process.exitCode = 1;
 }
 
 async function fileExists(file) {
@@ -723,7 +745,16 @@ async function findConflicts(installDir, customGitDir) {
       if (err.code !== 'ENOENT') throw err;
       continue;
     }
-    if (classifyContent(current, await renderHookFile(file, customGitDir)) === 'foreign') {
+    let rendered;
+    try {
+      rendered = await renderHookFile(file, customGitDir);
+    } catch (err) {
+      throw new Error(
+        `Failed to classify ${path.join(installDir, file)}: cannot read hook source: ${err.message}`,
+        { cause: err },
+      );
+    }
+    if (classifyContent(current, rendered) === 'foreign') {
       conflicts.push(file);
     }
   }
@@ -731,6 +762,11 @@ async function findConflicts(installDir, customGitDir) {
 }
 
 async function runInstall(requestedDir, { yolo, force = false }) {
+  if (findMissingSources().length > 0) {
+    reportMissingSources();
+    return;
+  }
+
   const installDir = path.resolve(requestedDir ?? DEFAULT_INSTALL_DIR);
   const customGitDir = requestedDir ? path.dirname(installDir) : undefined;
   const configTarget = path.join(path.dirname(installDir), 'config.yaml');
@@ -811,6 +847,11 @@ async function runInstall(requestedDir, { yolo, force = false }) {
 }
 
 async function runLocalInstall({ yolo, force = false }) {
+  if (findMissingSources().length > 0) {
+    reportMissingSources();
+    return;
+  }
+
   const repoRoot = getRepoRoot();
   if (!repoRoot) {
     console.error('Error: not inside a Git repository; --local installs a repository.');
@@ -862,7 +903,11 @@ async function runLocalInstall({ yolo, force = false }) {
 function unsetLocalHooksPath() {
   const result = spawnSync('git', ['config', '--unset', 'core.hooksPath'], { encoding: 'utf8' });
   // Exit code 5 means the key was not set; fine.
-  return result.status === 0 || result.status === 5;
+  const ok = result.status === 0 || result.status === 5;
+  if (!ok && result.stderr) {
+    console.error(result.stderr.trim());
+  }
+  return ok;
 }
 
 async function runUninstall({ scope, yolo }) {
@@ -878,7 +923,11 @@ async function runUninstall({ scope, yolo }) {
       console.log('Uninstall cancelled.');
       return;
     }
-    unsetLocalHooksPath();
+    const hooksCleared = unsetLocalHooksPath();
+    if (!hooksCleared) {
+      console.error('Error: failed to remove local core.hooksPath.');
+      process.exitCode = 1;
+    }
 
     const githooksDir = path.join(repoRoot, '.githooks');
     let leftovers = [];
@@ -928,7 +977,9 @@ async function runUninstall({ scope, yolo }) {
         // Not empty or gone; leave as reported above.
       }
     }
-    console.log('Local hooks removed: core.hooksPath cleared.');
+    if (hooksCleared) {
+      console.log('Local hooks removed: core.hooksPath cleared.');
+    }
     return;
   }
 
@@ -1293,6 +1344,14 @@ async function main() {
     || (!opts.install && !opts.wipe && !opts.verify && !opts.configCommand
       && !opts.uninstall && !opts.versionFlag && !opts.checkUpdate && !opts.update)) {
     printUsage();
+    // Bare `gitblock` (no argv at all) is a help request; unrecognized flags
+    // reaching the usage path are usage errors and must exit 1.
+    if (!opts.help) {
+      for (const flag of opts.unknown) {
+        console.error(`Error: unrecognized option "${flag}".`);
+      }
+      if (opts.unknown.length > 0) process.exitCode = 1;
+    }
     return;
   }
 

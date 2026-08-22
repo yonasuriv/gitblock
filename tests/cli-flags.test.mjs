@@ -41,3 +41,23 @@ test('entry guard matches real argv[1]', async () => {
   const self = new URL('../gitblock.mjs', import.meta.url).pathname;
   assert.equal(isEntryPoint(self), true);
 });
+
+test('parseArgs collects unrecognized -- flags', () => {
+  assert.deepEqual(parseArgs(['--bogus']).unknown, ['--bogus']);
+  assert.deepEqual(parseArgs(['--install', '--wat=1']).unknown, ['--wat=1']);
+  assert.deepEqual(parseArgs([]).unknown, []);
+  assert.deepEqual(parseArgs(['-h']).unknown, []);
+});
+
+test('unknown flag prints usage and exits 1', () => {
+  const r = runCli(['--bogus']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unrecognized option "--bogus"/);
+  assert.match(r.stdout, /Usage:/);
+});
+
+test('bare invocation exits 0 with usage', () => {
+  const r = runCli([]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /Usage:/);
+});

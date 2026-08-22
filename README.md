@@ -71,6 +71,11 @@ mv gitblock-v<VERSION>-linux-x64 ~/.local/bin/gitblock
 gitblock --version   # smoke test
 ```
 
+> **Note** — compiled binaries carry no hook sources on disk, so `--install`
+> is unavailable in that channel: run `gitblock --verify`, `config`,
+> `--wipe`, and `--update` from the binary, but install hooks via
+> `npm i -g gitblock && gitblock --install`.
+
 ### From source
 
 Clone this repository and run `node gitblock.mjs` directly, or use it to

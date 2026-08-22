@@ -354,6 +354,18 @@ export function getRepoRoot() {
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
+// The config file governing this repository, resolved through Git itself so
+// linked worktrees (whose origin lives in the main repo's .git/config) are
+// handled correctly.
+function getGitConfigFile() {
+  const result = spawnSync('git', ['rev-parse', '--git-path', 'config'], { encoding: 'utf8' });
+  if (result.status !== 0) {
+    return null;
+  }
+  const value = result.stdout.trim();
+  return value === '' ? null : path.resolve(process.cwd(), value);
+}
+
 function setLocalHooksPath(value) {
   const result = spawnSync('git', ['config', 'core.hooksPath', value], { stdio: 'inherit' });
   if (result.status !== 0) {
@@ -394,7 +406,8 @@ export async function detectScope(explicit) {
 
   const parsed = parseEffectiveHooksPath();
   const repoRoot = getRepoRoot();
-  if (!parsed || !repoRoot) {
+  const gitConfigFile = getGitConfigFile();
+  if (!parsed || !gitConfigFile) {
     return 'global';
   }
 
@@ -404,8 +417,10 @@ export async function detectScope(explicit) {
   if (!originFile) {
     return 'global';
   }
-  const resolvedOrigin = path.isAbsolute(originFile) ? originFile : path.resolve(repoRoot, originFile);
-  if (resolvedOrigin !== path.join(repoRoot, '.git', 'config')) {
+  const resolvedOrigin = path.isAbsolute(originFile)
+    ? originFile
+    : path.resolve(repoRoot ?? process.cwd(), originFile);
+  if (resolvedOrigin !== gitConfigFile) {
     return 'global';
   }
 
@@ -513,6 +528,16 @@ async function runVerify(scope) {
   }
 }
 
+// The global install's config file, derived from core.hooksPath when set,
+// otherwise at the default install base.
+async function globalConfigPath() {
+  const hooksPath = getGlobalHooksPath();
+  if (hooksPath) {
+    return path.join(hooksPath, '..', 'config.yaml');
+  }
+  return path.join(DEFAULT_INSTALL_BASE, 'config.yaml');
+}
+
 async function findConfigPath(scope) {
   if (scope === 'local') {
     const local = localConfigPath();
@@ -520,11 +545,7 @@ async function findConfigPath(scope) {
       return local;
     }
   }
-  const hooksPath = getGlobalHooksPath();
-  if (hooksPath) {
-    return path.join(hooksPath, '..', 'config.yaml');
-  }
-  return path.join(DEFAULT_INSTALL_BASE, 'config.yaml');
+  return globalConfigPath();
 }
 
 function normalizeSetting(setting) {
@@ -538,7 +559,25 @@ function normalizeSetting(setting) {
 }
 
 async function handleConfigCommand(args, scope) {
-  const configFile = await findConfigPath(scope);
+  // `config global ...` always targets the global install config, never the
+  // repository-local YAML — even when auto-detect resolved a local install.
+  const targetScope = args[0] === 'global' ? 'global' : scope;
+
+  let configFile;
+  if (targetScope === 'local' && args.length > 0) {
+    // Local-scope mutations own the local config: ensureConfig creates it
+    // rather than silently falling back to the global YAML while the
+    // enabled-toggle mutates the LOCAL hooksPath.
+    const local = localConfigPath();
+    if (!local) {
+      console.error('Error: not inside a Git repository; no local config to manage.');
+      process.exitCode = 1;
+      return;
+    }
+    configFile = local;
+  } else {
+    configFile = await findConfigPath(targetScope);
+  }
 
   if (args.length === 0) {
     if (await fileExists(configFile)) {
@@ -570,9 +609,11 @@ async function handleConfigCommand(args, scope) {
       if (setGlobalHooksPath(installDir)) {
         reportHooksPathStatus(installDir);
       }
-    } else {
-      unsetGlobalHooksPath();
+    } else if (unsetGlobalHooksPath()) {
       console.log('Global hooks disabled: core.hooksPath removed.');
+    } else {
+      console.error('Error: failed to remove global core.hooksPath.');
+      process.exitCode = 1;
     }
     return;
   }
@@ -605,8 +646,12 @@ async function handleConfigCommand(args, scope) {
   if (setting === 'enabled') {
     if (value) {
       if (scope === 'local') {
-        setLocalHooksPath('.githooks');
-        console.log('Local hooks enabled: core.hooksPath = ".githooks".');
+        if (setLocalHooksPath('.githooks')) {
+          console.log('Local hooks enabled: core.hooksPath = ".githooks".');
+        } else {
+          console.error('Error: failed to set local core.hooksPath.');
+          process.exitCode = 1;
+        }
       } else {
         const installDir = path.join(path.dirname(configFile), 'hooks');
         if (setGlobalHooksPath(installDir)) {
@@ -614,11 +659,17 @@ async function handleConfigCommand(args, scope) {
         }
       }
     } else if (scope === 'local') {
-      unsetLocalHooksPath();
-      console.log('"enabled" set to false; local core.hooksPath removed.');
-    } else {
-      unsetGlobalHooksPath();
+      if (unsetLocalHooksPath()) {
+        console.log('"enabled" set to false; local core.hooksPath removed.');
+      } else {
+        console.error('Error: failed to remove local core.hooksPath.');
+        process.exitCode = 1;
+      }
+    } else if (unsetGlobalHooksPath()) {
       console.log('"enabled" set to false; core.hooksPath removed.');
+    } else {
+      console.error('Error: failed to remove global core.hooksPath.');
+      process.exitCode = 1;
     }
   } else {
     console.log(`"${setting}" set to ${value}.`);

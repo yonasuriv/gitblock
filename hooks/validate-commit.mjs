@@ -127,38 +127,47 @@ async function removeTrailers(filePath, config) {
   }
 }
 
-// The config file lives one level above the hooks directory:
-// "$HOME/.git/config.yaml" when installed via gitblock.mjs.
-function configPath() {
+// The config file lives one level above the hooks directory (global install:
+// "$HOME/.git/config.yaml") or sits beside the hooks (local: ".githooks").
+// The sibling check comes first so an unrelated <repo-root>/config.yaml can
+// never shadow a local install.
+function configPaths() {
   const hookDir = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(hookDir, '..', 'config.yaml');
+  return [
+    path.join(hookDir, 'config.yaml'),
+    path.join(hookDir, '..', 'config.yaml'),
+  ];
 }
 
 async function loadConfig() {
   const defaults = { enabled: true, logging: false, trailer: false, verbose: false };
 
-  try {
-    const raw = await readFile(configPath(), 'utf8');
-    const config = { ...defaults };
+  for (const candidate of configPaths()) {
+    try {
+      const raw = await readFile(candidate, 'utf8');
+      const config = { ...defaults };
 
-    for (const line of raw.split(/\r?\n/)) {
-      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$/u);
-      if (!match) {
-        continue;
+      for (const line of raw.split(/\r?\n/)) {
+        const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$/u);
+        if (!match) {
+          continue;
+        }
+
+        const [, key, value] = match;
+        if (value === '') {
+          continue;
+        }
+
+        config[key] = value === 'true' ? true : value === 'false' ? false : value;
       }
 
-      const [, key, value] = match;
-      if (value === '') {
-        continue;
-      }
-
-      config[key] = value === 'true' ? true : value === 'false' ? false : value;
+      return config;
+    } catch {
+      continue;
     }
-
-    return config;
-  } catch {
-    return defaults;
   }
+
+  return defaults;
 }
 
 // Echo one entry per line into the configured log file.

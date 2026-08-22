@@ -1138,9 +1138,25 @@ async function main() {
   }
 }
 
-// Only run as a CLI entry point. Importing this module (e.g. from the wipe
-// filter script) must not trigger main(). Compare resolved paths so the
-// installed "gitblock" symlink also counts as the entry point.
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(SCRIPT_PATH)) {
+// Only run as a CLI entry point. Importing this module must not trigger
+// main(). In compiled binaries there is no source file on disk: treat any
+// direct execution (argv[1] === execPath) as the entry point.
+export function isEntryPoint(argv1) {
+  if (!argv1) return false;
+  const resolve = (p) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return null;
+    }
+  };
+  const self = resolve(SCRIPT_PATH);
+  if (self === null) {
+    return argv1 === process.execPath;
+  }
+  return resolve(argv1) === self;
+}
+
+if (isEntryPoint(process.argv[1])) {
   await main();
 }

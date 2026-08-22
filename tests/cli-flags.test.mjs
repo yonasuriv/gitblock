@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, VERSION } from '../gitblock.mjs';
+import { parseArgs, VERSION, isEntryPoint } from '../gitblock.mjs';
 import { runCli } from './helpers.mjs';
 
 test('VERSION is valid semver', () => {
@@ -31,4 +31,13 @@ test('--uninstall --global parses', () => {
   const o = parseArgs(['--uninstall', '--global']);
   assert.equal(o.uninstall, true);
   assert.equal(o.global, true);
+});
+
+test('entry guard tolerates nonexistent paths', () => {
+  assert.equal(isEntryPoint(undefined), false);
+});
+
+test('entry guard matches real argv[1]', async () => {
+  const self = new URL('../gitblock.mjs', import.meta.url).pathname;
+  assert.equal(isEntryPoint(self), true);
 });

@@ -54,6 +54,8 @@ const DEFAULT_INSTALL_DIR = path.join(DEFAULT_INSTALL_BASE, 'hooks');
 const HOOK_FILES = ['validate-commit.mjs', 'prepare-commit-msg', 'commit-msg'];
 const CONFIG_KEYS = ['enabled', 'logging', 'trailer', 'verbose'];
 
+export const VERSION = '1.0.0';
+
 const BOOL_WORDS = {
   true: true,
   false: false,
@@ -72,7 +74,7 @@ function parseBool(value) {
   return s in BOOL_WORDS ? BOOL_WORDS[s] : undefined;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const opts = {
     install: false,
     installDir: undefined,
@@ -80,6 +82,13 @@ function parseArgs(argv) {
     verify: false,
     yolo: false,
     help: false,
+    global: false,
+    local: false,
+    force: false,
+    uninstall: false,
+    versionFlag: false,
+    checkUpdate: false,
+    update: false,
     config: [],
     configCommand: false,
   };
@@ -105,6 +114,20 @@ function parseArgs(argv) {
       opts.yolo = true;
     } else if (arg === '--help' || arg === '-h') {
       opts.help = true;
+    } else if (arg === '--global') {
+      opts.global = true;
+    } else if (arg === '--local') {
+      opts.local = true;
+    } else if (arg === '--force') {
+      opts.force = true;
+    } else if (arg === '--uninstall') {
+      opts.uninstall = true;
+    } else if (arg === '--version') {
+      opts.versionFlag = true;
+    } else if (arg === '--check-update') {
+      opts.checkUpdate = true;
+    } else if (arg === '--update') {
+      opts.update = true;
     } else if (arg === 'config') {
       opts.configCommand = true;
       opts.config = argv.slice(i + 1);
@@ -699,8 +722,15 @@ function shellQuote(value) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  if (opts.help || (!opts.install && !opts.wipe && !opts.verify && !opts.configCommand)) {
+  if (opts.help
+    || (!opts.install && !opts.wipe && !opts.verify && !opts.configCommand
+      && !opts.uninstall && !opts.versionFlag && !opts.checkUpdate && !opts.update)) {
     printUsage();
+    return;
+  }
+
+  if (opts.versionFlag) {
+    console.log(`gitblock ${VERSION}`);
     return;
   }
 

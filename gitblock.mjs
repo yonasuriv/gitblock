@@ -268,25 +268,45 @@ export function normalizeContent(content) {
 }
 
 // 'ours' | 'foreign' | 'absent'. Normalized compare keeps reinstalls idempotent.
+// Only a genuinely missing target yields 'absent'; any other read failure
+// propagates. An unreadable source always rejects with an actionable message.
 export async function classifyTarget(destPath, srcPath) {
   let current;
   try {
     current = await readFile(destPath, 'utf8');
-  } catch {
-    return 'absent';
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return 'absent';
+    }
+    throw err;
   }
-  const source = await readFile(srcPath, 'utf8');
+
+  let source;
+  try {
+    source = await readFile(srcPath, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `Failed to classify ${destPath}: cannot read source ${srcPath}: ${err.message}`,
+      { cause: err },
+    );
+  }
+
   return normalizeContent(current) === normalizeContent(source) ? 'ours' : 'foreign';
 }
 
-// Copy an existing target aside before overwriting.
+// Copy an existing target aside before overwriting. Millisecond timestamps,
+// monotonically bumped so rapid successive calls never collide.
+let lastBackupMs = 0;
+
 export async function backupFile(destPath) {
   try {
     await readFile(destPath);
   } catch {
     return null;
   }
-  const backup = `${destPath}.bak-${Math.floor(Date.now() / 1000)}`;
+  const stamp = Math.max(Date.now(), lastBackupMs + 1);
+  lastBackupMs = stamp;
+  const backup = `${destPath}.bak-${stamp}`;
   await copyFile(destPath, backup);
   return backup;
 }

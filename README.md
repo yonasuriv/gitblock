@@ -218,11 +218,11 @@ gitblock --uninstall --local     # this repository's .githooks install
 
 - **Global**: unsets the global `core.hooksPath` only. It does not touch the
   `enabled` flag in any `config.yaml`.
-- **Local**: removes the repo-local `core.hooksPath`, then deletes the hook
-  files inside `.githooks/` that belong to gitblock. Everything else —
-  including `.githooks/config.yaml`, which is yours — stays in place, and
-  gitblock reports what it left behind. If nothing remains, `.githooks/`
-  itself is removed too.
+- **Local**: removes the repo-local `core.hooksPath`, then cleans `.githooks/`
+  ownership-aware: any file that is identical to what gitblock installs
+  (hook files, and an untouched default `config.yaml`) is deleted; any file
+  you changed or added — including a customized `config.yaml` — is kept and
+  reported. `.githooks/` itself is removed only when nothing remains in it.
 
 To fully remove a global install, also delete the files:
 

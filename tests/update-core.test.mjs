@@ -44,7 +44,38 @@ test('fetchLatestVersion parses registry response', async () => {
   assert.equal(await fetchLatestVersion(fake), '9.9.9');
 });
 
-test('fetchLatestVersion returns null on failure', async () => {
+test('fetchLatestVersion returns null when both sources fail', async () => {
   const fake = async () => { throw new Error('down'); };
+  assert.equal(await fetchLatestVersion(fake), null);
+});
+
+test('fetchLatestVersion falls back to GitHub Releases', async () => {
+  const seen = [];
+  const fake = async (url) => {
+    seen.push(url);
+    if (String(url).includes('registry.npmjs.org')) {
+      return { ok: false, status: 503, json: async () => ({}) };
+    }
+    return { ok: true, status: 200, json: async () => ({ tag_name: 'v8.1.2' }) };
+  };
+  assert.equal(await fetchLatestVersion(fake), '8.1.2');
+  assert.ok(seen.some((u) => String(u).includes('api.github.com')));
+});
+
+test('fetchLatestVersion falls back when registry fetch throws', async () => {
+  const fake = async (url) => {
+    if (String(url).includes('registry.npmjs.org')) throw new Error('ECONNRESET');
+    return { ok: true, status: 200, json: async () => ({ tag_name: 'v2.0.0' }) };
+  };
+  assert.equal(await fetchLatestVersion(fake), '2.0.0');
+});
+
+test('fetchLatestVersion returns null when GitHub fallback also fails', async () => {
+  const fake = async (url) => {
+    if (String(url).includes('registry.npmjs.org')) {
+      return { ok: false, status: 503, json: async () => ({}) };
+    }
+    throw new Error('rate limited');
+  };
   assert.equal(await fetchLatestVersion(fake), null);
 });

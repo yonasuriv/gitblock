@@ -4,7 +4,27 @@ on:
     tags: ["v*"]
 
 jobs:
+  check-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert tag matches VERSION constant
+        run: |
+          V=$(grep -oP "VERSION = '\K[^']+" gitblock.mjs)
+          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != v$V"; exit 1; }
+
+  test:
+    needs: check-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
   build:
+    needs: test
     strategy:
       matrix:
         include:
@@ -41,10 +61,6 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org/
-      - name: Assert tag matches VERSION constant
-        run: |
-          V=$(grep -oP "VERSION = '\K[^']+" gitblock.mjs)
-          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != v$V"; exit 1; }
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

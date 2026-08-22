@@ -1147,14 +1147,28 @@ export function isNewerVersion(candidate, current) {
 }
 
 // Returns the newest published version, or null when unreachable.
+// Primary source is the npm registry; the GitHub Releases API is the
+// fallback (tag_name with a leading "v" stripped).
 export async function fetchLatestVersion(fetchImpl = fetch) {
   try {
     const res = await fetchImpl('https://registry.npmjs.org/gitblock/latest', {
       signal: AbortSignal.timeout(10_000),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.version === 'string') return data.version;
+    }
+  } catch {
+    // Fall through to the GitHub Releases fallback.
+  }
+  try {
+    const res = await fetchImpl('https://api.github.com/repos/yonasuriv/gitblock/releases/latest', {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) return null;
     const data = await res.json();
-    return typeof data.version === 'string' ? data.version : null;
+    if (typeof data.tag_name !== 'string') return null;
+    return data.tag_name.replace(/^v/, '');
   } catch {
     return null;
   }

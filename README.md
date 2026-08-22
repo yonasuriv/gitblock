@@ -1,6 +1,6 @@
-# githooker
+# gitblock
 
-githooker is a zero-dependency Node.js tool that installs and manages Git
+gitblock is a zero-dependency Node.js tool that installs and manages Git
 commit hooks for trailer cleanup, plus a one-shot history rewriter that strips
 trailers out of an entire repository.
 
@@ -15,7 +15,7 @@ can be toggled without touching the hook scripts.
   `core.hooksPath`.
 - **Trailer cleanup** — strips Git trailer blocks from commit messages on
   every commit, or keeps them, depending on the configuration.
-- **Enabled switch** — set `enabled: false` and githooker removes the global
+- **Enabled switch** — set `enabled: false` and gitblock removes the global
   `core.hooksPath`, so no hook runs at all.
 - **Verification** — `--verify` reports whether the global hooks path is set
   and actually applied in the current repository.
@@ -39,7 +39,7 @@ can be toggled without touching the hook scripts.
 ```
 config/default.yaml   # source config; copied as config.yaml at install time
 hooks/                # the hook scripts that get installed
-githooker.mjs         # the installer / manager CLI
+gitblock.mjs         # the installer / manager CLI
 ```
 
 ## Installation
@@ -50,22 +50,22 @@ script without any flags only prints the help screen.
 ### Default location
 
 ```sh
-node githooker.mjs --install
+node gitblock.mjs --install
 ```
 
-Copies the hooks into `$HOME/.local/opt/githooker/hooks`, the CLI itself into
-`$HOME/.local/opt/githooker/bin/githooker.mjs`, places `config.yaml` in the
+Copies the hooks into `$HOME/.local/opt/gitblock/hooks`, the CLI itself into
+`$HOME/.local/opt/gitblock/bin/gitblock.mjs`, places `config.yaml` in the
 same directory that contains the hooks directory
-(`$HOME/.local/opt/githooker/config.yaml`), and sets the global Git hooks path.
+(`$HOME/.local/opt/gitblock/config.yaml`), and sets the global Git hooks path.
 
-A `githooker` command is symlinked into `$HOME/.local/bin`, so the CLI is
-available as `githooker` from anywhere (make sure `$HOME/.local/bin` is on
+A `gitblock` command is symlinked into `$HOME/.local/bin`, so the CLI is
+available as `gitblock` from anywhere (make sure `$HOME/.local/bin` is on
 your `PATH`).
 
 ### Verifying the install
 
 ```sh
-node githooker.mjs --verify
+node gitblock.mjs --verify
 ```
 
 Prints where `core.hooksPath` is set globally, whether the hooks directory and
@@ -82,19 +82,19 @@ git config --show-origin --get core.hooksPath
 
 A global `core.hooksPath` applies to **every** repository for your user. The
 only exception is a repository that sets its own local `core.hooksPath` in
-`.git/config` — that value takes precedence and disables githooker for that
+`.git/config` — that value takes precedence and disables gitblock for that
 repository alone.
 
 ### Custom location
 
 ```sh
-node githooker.mjs --install /path/to/hooks
+node gitblock.mjs --install /path/to/hooks
 ```
 
 ### Non-interactive
 
 ```sh
-node githooker.mjs --install --yolo
+node gitblock.mjs --install --yolo
 ```
 
 ## Configuration
@@ -104,7 +104,7 @@ directory that contains the installed `hooks/` directory.
 
 | Key       | Default | Meaning                                                                 |
 |-----------|---------|-------------------------------------------------------------------------|
-| `enabled` | `true`  | When `false`, githooker removes the global hooks path so nothing runs.  |
+| `enabled` | `true`  | When `false`, gitblock removes the global hooks path so nothing runs.  |
 | `logging` | `false` | Log each trailer action to the log file when enabled.                   |
 | `trailer` | `false` | When `true` trailers are kept; when `false` they are stripped.          |
 | `verbose` | `false` | Print errors to the terminal instead of failing silently.               |
@@ -113,20 +113,20 @@ directory that contains the installed `hooks/` directory.
 
 ```sh
 # Set a single option (true/false and enable/disable are interchangeable)
-node githooker.mjs config logging true
-node githooker.mjs config trailers false
-node githooker.mjs config verbose enable
+node gitblock.mjs config logging true
+node gitblock.mjs config trailers false
+node gitblock.mjs config verbose enable
 
 # enable / disable shorthand
-node githooker.mjs config enable logging
-node githooker.mjs config disable trailers
+node gitblock.mjs config enable logging
+node gitblock.mjs config disable trailers
 
 # Turn the global hooks on/off entirely
-node githooker.mjs config global disable   # removes core.hooksPath
-node githooker.mjs config global enable    # re-points core.hooksPath
+node gitblock.mjs config global disable   # removes core.hooksPath
+node gitblock.mjs config global enable    # re-points core.hooksPath
 
 # Print the current configuration
-node githooker.mjs config
+node gitblock.mjs config
 ```
 
 `config global disable` sets `enabled: false` and removes the global
@@ -134,7 +134,7 @@ node githooker.mjs config
 
 ## Wiping trailers and authorship from history
 
-Trailer blocks that githooker normally strips during commits may already exist
+Trailer blocks that gitblock normally strips during commits may already exist
 in historical commits. `--wipe` rewrites every commit in the repository
 (pushed and unpushed): it removes the trailers and resets each commit's
 author and committer to your `user.name` / `user.email` from git config
@@ -143,8 +143,8 @@ pushing remains in the history. Commit dates are preserved. The confirmation
 prompt shows the current working directory it is about to rewrite.
 
 ```sh
-node githooker.mjs --wipe
-node githooker.mjs --wipe --yolo   # skip the confirmation
+node gitblock.mjs --wipe
+node gitblock.mjs --wipe --yolo   # skip the confirmation
 ```
 
 `--wipe` refuses to run when `user.name` or `user.email` is not configured,
@@ -156,26 +156,26 @@ since those values become the identity of every rewritten commit.
 
 ## How it works
 
-1. `githooker.mjs --install` copies `hooks/*` into the target directory, the
-   CLI into `<target>/bin/githooker.mjs`, and `config/default.yaml` next to
+1. `gitblock.mjs --install` copies `hooks/*` into the target directory, the
+   CLI into `<target>/bin/gitblock.mjs`, and `config/default.yaml` next to
    them as `config.yaml`.
 2. It sets `git config --global core.hooksPath` to the hooks directory.
 3. On every commit, the `prepare-commit-msg` and `commit-msg` hooks run
    `validate-commit.mjs`, which reads the sibling `config.yaml` and either
    strips the trailer block, logs the action, or does nothing.
-4. When `enabled` is `false`, githooker removes `core.hooksPath`, so no hook
+4. When `enabled` is `false`, gitblock removes `core.hooksPath`, so no hook
    runs at all; the hook itself also exits immediately as a safeguard.
 
 ## Uninstalling
 
 ```sh
-node githooker.mjs config global disable
+node gitblock.mjs config global disable
 ```
 
 Or, to also remove the hooks and config entirely:
 
 ```sh
-rm -rf "$HOME/.local/opt/githooker"
-rm -f "$HOME/.local/bin/githooker"
+rm -rf "$HOME/.local/opt/gitblock"
+rm -f "$HOME/.local/bin/gitblock"
 git config --global --unset core.hooksPath
 ```

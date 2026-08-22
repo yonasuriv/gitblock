@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * githooker — installer and manager for the Git commit hooks.
+ * gitblock — installer and manager for the Git commit hooks.
  *
  * All install/uninstall behavior only triggers when the `--install` flag is
  * passed (optionally with a target directory: `--install <path>`). Running
@@ -12,17 +12,17 @@
  * alongside).
  *
  * Usage:
- *   node githooker.mjs --install [path]      Install hooks (sets core.hooksPath)
- *   node githooker.mjs --install=<path>      Same, directory inline
- *   node githooker.mjs --verify              Check whether the global hooks path is applied
- *   node githooker.mjs --wipe                Strip trailers and reset commit authorship in history
- *   node githooker.mjs --yolo                Non-interactive: auto-accept prompts
- *   node githooker.mjs config <what> <value> Manage the installed configuration
+ *   node gitblock.mjs --install [path]      Install hooks (sets core.hooksPath)
+ *   node gitblock.mjs --install=<path>      Same, directory inline
+ *   node gitblock.mjs --verify              Check whether the global hooks path is applied
+ *   node gitblock.mjs --wipe                Strip trailers and reset commit authorship in history
+ *   node gitblock.mjs --yolo                Non-interactive: auto-accept prompts
+ *   node gitblock.mjs config <what> <value> Manage the installed configuration
  *
  * Config management:
- *   node githooker.mjs config <logging|trailers|verbose|enabled> <true|false|enable|disable>
- *   node githooker.mjs config enable|disable <logging|trailers|verbose|enabled>
- *   node githooker.mjs config global enable|disable
+ *   node gitblock.mjs config <logging|trailers|verbose|enabled> <true|false|enable|disable>
+ *   node gitblock.mjs config enable|disable <logging|trailers|verbose|enabled>
+ *   node gitblock.mjs config global enable|disable
  */
 
 import process from 'node:process';
@@ -49,7 +49,7 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
 const SOURCE_HOOKS_DIR = path.join(SCRIPT_DIR, 'hooks');
 const SOURCE_CONFIG = path.join(SCRIPT_DIR, 'config', 'default.yaml');
-const DEFAULT_INSTALL_BASE = path.join(os.homedir(), '.local', 'opt', 'githooker');
+const DEFAULT_INSTALL_BASE = path.join(os.homedir(), '.local', 'opt', 'gitblock');
 const DEFAULT_INSTALL_DIR = path.join(DEFAULT_INSTALL_BASE, 'hooks');
 const HOOK_FILES = ['validate-commit.mjs', 'prepare-commit-msg', 'commit-msg'];
 const CONFIG_KEYS = ['enabled', 'logging', 'trailer', 'verbose'];
@@ -118,20 +118,20 @@ function parseArgs(argv) {
 }
 
 function printUsage() {
-  console.log(`githooker — Git commit-hook installer and manager
+  console.log(`gitblock — Git commit-hook installer and manager
 
 Usage:
-  node githooker.mjs --install [path]      Install hooks into "path" (default: ${DEFAULT_INSTALL_DIR}) and set core.hooksPath
-  node githooker.mjs --install=<path>      Same, directory inline
-  node githooker.mjs --verify              Check whether the global hooks path is applied
-  node githooker.mjs --wipe                Wipe trailers and reset commit authorship in history (destructive)
-  node githooker.mjs --yolo                Non-interactive mode: auto-accept every prompt
-  node githooker.mjs config <what> <value> Manage the installed configuration
+  node gitblock.mjs --install [path]      Install hooks into "path" (default: ${DEFAULT_INSTALL_DIR}) and set core.hooksPath
+  node gitblock.mjs --install=<path>      Same, directory inline
+  node gitblock.mjs --verify              Check whether the global hooks path is applied
+  node gitblock.mjs --wipe                Wipe trailers and reset commit authorship in history (destructive)
+  node gitblock.mjs --yolo                Non-interactive mode: auto-accept every prompt
+  node gitblock.mjs config <what> <value> Manage the installed configuration
 
 Config management:
-  node githooker.mjs config <logging|trailers|verbose|enabled> <true|false|enable|disable>
-  node githooker.mjs config enable|disable <logging|trailers|verbose|enabled>
-  node githooker.mjs config global enable|disable
+  node gitblock.mjs config <logging|trailers|verbose|enabled> <true|false|enable|disable>
+  node gitblock.mjs config enable|disable <logging|trailers|verbose|enabled>
+  node gitblock.mjs config global enable|disable
 
 Flags:
   --install [path]   Install the hooks. All install behavior only runs with this flag.
@@ -306,7 +306,7 @@ function reportHooksPathStatus(installDir) {
     console.log(`Hooks enabled: core.hooksPath = "${installDir}" (${parsed.origin}).`);
   } else {
     console.warn(`Hooks enabled globally, but "${parsed.origin}" overrides core.hooksPath here with "${parsed.value}".`);
-    console.warn('githooker will not run in this repository until that setting is removed.');
+    console.warn('gitblock will not run in this repository until that setting is removed.');
   }
 }
 
@@ -314,13 +314,13 @@ async function runVerify() {
   const globalHooks = getGlobalHooksPath();
   const globalConfigPath = path.join(os.homedir(), '.gitconfig');
 
-  console.log('githooker verification');
+  console.log('gitblock verification');
   console.log(`  global config:    ${globalConfigPath} (${(await fileExists(globalConfigPath)) ? 'exists' : 'missing'})`);
 
   if (!globalHooks) {
     console.log('  global hooksPath: not set');
     console.log('  status: hooks are NOT enabled globally.');
-    console.log('  Fix: run "node githooker.mjs --install".');
+    console.log('  Fix: run "node gitblock.mjs --install".');
     return;
   }
 
@@ -333,14 +333,14 @@ async function runVerify() {
   console.log(`  config file:      ${configTarget} (${configExists ? 'exists' : 'MISSING'})`);
 
   if (!hooksExist || !configExists) {
-    console.log('  status: global hooksPath does not point to a githooker install.');
-    console.log('  Fix: run "node githooker.mjs --install".');
+    console.log('  status: global hooksPath does not point to a gitblock install.');
+    console.log('  Fix: run "node gitblock.mjs --install".');
     return;
   }
 
   if (config?.enabled === false) {
     console.log('  status: installed but DISABLED (config "enabled" is false).');
-    console.log('  Fix: run "node githooker.mjs config global enable".');
+    console.log('  Fix: run "node gitblock.mjs config global enable".');
     return;
   }
 
@@ -350,7 +350,7 @@ async function runVerify() {
     console.log('  status: OK - global hooks path is applied.');
   } else {
     console.log(`  effective (here): ${parsed ? `${parsed.origin} -> ${parsed.value}` : 'not set'}`);
-    console.log(`  status: overridden in this repository (${parsed?.origin}); githooker is not active here.`);
+    console.log(`  status: overridden in this repository (${parsed?.origin}); gitblock is not active here.`);
     console.log('  Other repositories still use the global hooks path unless they override it too.');
   }
 }
@@ -393,7 +393,7 @@ async function handleConfigCommand(args) {
   if (first === 'global') {
     const value = parseBool(rest[0] ?? '');
     if (value === undefined) {
-      console.error('Usage: githooker.mjs config global enable|disable');
+      console.error('Usage: gitblock.mjs config global enable|disable');
       process.exitCode = 1;
       return;
     }
@@ -428,9 +428,9 @@ async function handleConfigCommand(args) {
   }
 
   if (!setting || value === undefined) {
-    console.error('Usage: githooker.mjs config <logging|trailers|verbose|enabled> <true|false|enable|disable>');
-    console.error('       githooker.mjs config enable|disable <logging|trailers|verbose|enabled>');
-    console.error('       githooker.mjs config global enable|disable');
+    console.error('Usage: gitblock.mjs config <logging|trailers|verbose|enabled> <true|false|enable|disable>');
+    console.error('       gitblock.mjs config enable|disable <logging|trailers|verbose|enabled>');
+    console.error('       gitblock.mjs config global enable|disable');
     process.exitCode = 1;
     return;
   }
@@ -462,8 +462,8 @@ async function installHookFile(file, installDir, customGitDir) {
     const template = await readFile(src, 'utf8');
     const logFile = path.join(customGitDir, 'logs');
     const generated = template.replace(
-      /const GITHOOKER_LOG_FILE = .+;\n/u,
-      `const GITHOOKER_LOG_FILE = ${JSON.stringify(logFile)};\n`,
+      /const GITBLOCK_LOG_FILE = .+;\n/u,
+      `const GITBLOCK_LOG_FILE = ${JSON.stringify(logFile)};\n`,
     );
     await writeFile(dest, generated, 'utf8');
   } else {
@@ -492,19 +492,19 @@ async function runInstall(requestedDir, { yolo }) {
   }
 
   const binDir = path.join(path.dirname(installDir), 'bin');
-  const binTarget = path.join(binDir, 'githooker.mjs');
+  const binTarget = path.join(binDir, 'gitblock.mjs');
   await mkdir(binDir, { recursive: true });
   await copyFile(SCRIPT_PATH, binTarget);
   await chmod(binTarget, 0o755);
 
-  const binLink = path.join(os.homedir(), '.local', 'bin', 'githooker');
+  const binLink = path.join(os.homedir(), '.local', 'bin', 'gitblock');
   await mkdir(path.dirname(binLink), { recursive: true });
   try {
     await symlink(binTarget, binLink, 'file');
-    console.log(`Linked "githooker" into PATH as "${binLink}".`);
+    console.log(`Linked "gitblock" into PATH as "${binLink}".`);
   } catch (err) {
     if (err.code !== 'EEXIST') {
-      console.warn(`Could not link "githooker" into PATH: ${err.message}`);
+      console.warn(`Could not link "gitblock" into PATH: ${err.message}`);
     } else {
       let pointsAt = null;
       try {
@@ -637,7 +637,7 @@ async function runWipe({ yolo }) {
     return;
   }
 
-  const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'githooker-'));
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'gitblock-'));
   const filterFile = path.join(tmpDir, 'strip-trailers.mjs');
   const filterSource =
     `import { stripTrailers } from ${JSON.stringify(SCRIPT_PATH)};\n` +
@@ -725,7 +725,7 @@ async function main() {
 
 // Only run as a CLI entry point. Importing this module (e.g. from the wipe
 // filter script) must not trigger main(). Compare resolved paths so the
-// installed "githooker" symlink also counts as the entry point.
+// installed "gitblock" symlink also counts as the entry point.
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(SCRIPT_PATH)) {
   await main();
 }

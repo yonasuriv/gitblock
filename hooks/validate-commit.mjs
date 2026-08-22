@@ -16,9 +16,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 
-// Log destination. githooker rewrites this line at install time when a
+// Log destination. gitblock rewrites this line at install time when a
 // custom --path is supplied. Default: "$HOME/.git/logs".
-const GITHOOKER_LOG_FILE = path.join(os.homedir(), '.git', 'logs');
+const GITBLOCK_LOG_FILE = path.join(os.homedir(), '.git', 'logs');
 
 const messagePath = process.argv[2];
 const config = await loadConfig();
@@ -128,7 +128,7 @@ async function removeTrailers(filePath, config) {
 }
 
 // The config file lives one level above the hooks directory:
-// "$HOME/.git/config.yaml" when installed via githooker.mjs.
+// "$HOME/.git/config.yaml" when installed via gitblock.mjs.
 function configPath() {
   const hookDir = path.dirname(fileURLToPath(import.meta.url));
   return path.join(hookDir, '..', 'config.yaml');
@@ -163,7 +163,7 @@ async function loadConfig() {
 
 // Echo one entry per line into the configured log file.
 async function appendLog(entry, verbose) {
-  const logFile = GITHOOKER_LOG_FILE;
+  const logFile = GITBLOCK_LOG_FILE;
 
   try {
     await mkdir(path.dirname(logFile), { recursive: true });

@@ -267,6 +267,11 @@ export function normalizeContent(content) {
   return content.replace(/\r\n/gu, '\n').replace(/\s+$/u, '');
 }
 
+// 'ours' | 'foreign'. Normalized compare keeps reinstalls idempotent.
+export function classifyContent(current, source) {
+  return normalizeContent(current) === normalizeContent(source) ? 'ours' : 'foreign';
+}
+
 // 'ours' | 'foreign' | 'absent'. Normalized compare keeps reinstalls idempotent.
 // Only a genuinely missing target yields 'absent'; any other read failure
 // propagates. An unreadable source always rejects with an actionable message.
@@ -291,7 +296,7 @@ export async function classifyTarget(destPath, srcPath) {
     );
   }
 
-  return normalizeContent(current) === normalizeContent(source) ? 'ours' : 'foreign';
+  return classifyContent(current, source);
 }
 
 // Copy an existing target aside before overwriting. Millisecond timestamps,
@@ -524,33 +529,62 @@ async function handleConfigCommand(args) {
   }
 }
 
+// The exact content installHookFile would write, so the conflict scan can
+// recognize our own previously-baked copies as "ours".
+async function renderHookFile(file, customGitDir) {
+  const src = path.join(SOURCE_HOOKS_DIR, file);
+  const template = await readFile(src, 'utf8');
+  if (!(customGitDir && file === 'validate-commit.mjs')) {
+    return template;
+  }
+  const logFile = path.join(customGitDir, 'logs');
+  return template.replace(
+    /const GITBLOCK_LOG_FILE = .+;\n/u,
+    `const GITBLOCK_LOG_FILE = ${JSON.stringify(logFile)};\n`,
+  );
+}
+
 async function installHookFile(file, installDir, customGitDir) {
   const src = path.join(SOURCE_HOOKS_DIR, file);
   const dest = path.join(installDir, file);
 
   // Bake the custom path into the generated hook instead of "$HOME/.git".
   if (customGitDir && file === 'validate-commit.mjs') {
-    const template = await readFile(src, 'utf8');
-    const logFile = path.join(customGitDir, 'logs');
-    const generated = template.replace(
-      /const GITBLOCK_LOG_FILE = .+;\n/u,
-      `const GITBLOCK_LOG_FILE = ${JSON.stringify(logFile)};\n`,
-    );
-    await writeFile(dest, generated, 'utf8');
+    await writeFile(dest, await renderHookFile(file, customGitDir), 'utf8');
   } else {
     await copyFile(src, dest);
   }
 }
 
-async function runInstall(requestedDir, { yolo }) {
+async function runInstall(requestedDir, { yolo, force = false }) {
   const installDir = path.resolve(requestedDir ?? DEFAULT_INSTALL_DIR);
   const customGitDir = requestedDir ? path.dirname(installDir) : undefined;
   const configTarget = path.join(path.dirname(installDir), 'config.yaml');
 
-  const ok = await askConfirm(`Install Git hooks into "${installDir}"? [Y/n] `, {
-    yolo,
-    defaultYes: true,
-  });
+  // Classify first: a foreign conflict aborts before any prompt or write.
+  const conflicts = [];
+  for (const file of HOOK_FILES) {
+    let current;
+    try {
+      current = await readFile(path.join(installDir, file), 'utf8');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      continue;
+    }
+    if (classifyContent(current, await renderHookFile(file, customGitDir)) === 'foreign') {
+      conflicts.push(file);
+    }
+  }
+
+  if (conflicts.length > 0 && !force) {
+    console.error(`Error: refusing to overwrite foreign files in "${installDir}":`);
+    for (const file of conflicts) console.error(`  ${file}`);
+    console.error('Re-run with --force to back them up and overwrite.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const ok = await askConfirm(`Install Git hooks into "${installDir}"? [Y/n] `, { yolo, defaultYes: true });
   if (!ok) {
     console.log('Installation cancelled.');
     return;
@@ -558,8 +592,12 @@ async function runInstall(requestedDir, { yolo }) {
 
   await mkdir(installDir, { recursive: true });
 
-  for (const entry of await readdir(SOURCE_HOOKS_DIR)) {
-    await installHookFile(entry, installDir, customGitDir);
+  for (const file of HOOK_FILES) {
+    if (conflicts.includes(file)) {
+      const bak = await backupFile(path.join(installDir, file));
+      if (bak) console.log(`Backed up ${file} -> ${bak}`);
+    }
+    await installHookFile(file, installDir, customGitDir);
   }
 
   const binDir = path.join(path.dirname(installDir), 'bin');
@@ -799,7 +837,7 @@ async function main() {
   }
 
   if (opts.install) {
-    await runInstall(opts.installDir, { yolo: opts.yolo });
+    await runInstall(opts.installDir, { yolo: opts.yolo, force: opts.force });
   }
 
   if (opts.wipe) {

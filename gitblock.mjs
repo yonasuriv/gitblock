@@ -1117,6 +1117,42 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'\\''`)}'`;
 }
 
+// --- Self-update: channel detection, semver compare, registry lookup ---
+
+// Which install channel governs this copy: 'binary' (compiled executable),
+// 'npm' (global package), 'manual' (opt-layout install), or 'source'
+// (development checkout).
+export function detectChannel(argv1, execPath, installBase) {
+  if (!argv1 || argv1 === execPath) return 'binary';
+  const p = path.resolve(argv1);
+  if (p.split(path.sep).includes('node_modules')) return 'npm';
+  if (installBase && p.startsWith(installBase)) return 'manual';
+  return 'source';
+}
+
+export function isNewerVersion(candidate, current) {
+  const parse = (v) => String(v).split('.').map((n) => parseInt(n, 10) || 0);
+  const [a, b] = [parse(candidate), parse(current)];
+  for (let i = 0; i < 3; i += 1) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+}
+
+// Returns the newest published version, or null when unreachable.
+export async function fetchLatestVersion(fetchImpl = fetch) {
+  try {
+    const res = await fetchImpl('https://registry.npmjs.org/gitblock/latest', {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.version === 'string' ? data.version : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 

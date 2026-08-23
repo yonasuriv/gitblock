@@ -48,8 +48,20 @@ import {
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
-export const SOURCE_HOOKS_DIR = path.join(SCRIPT_DIR, 'hooks');
-const SOURCE_CONFIG = path.join(SCRIPT_DIR, 'config', 'default.yaml');
+
+// Sources live beside the script in a repo checkout or npm install, and one
+// level up when running from the manual layout's bin/ directory. Prefer the
+// nearer location; null when neither exists (compiled binaries).
+function resolveSourceDir(...segments) {
+  for (const base of [SCRIPT_DIR, path.join(SCRIPT_DIR, '..')]) {
+    const candidate = path.join(base, ...segments);
+    if (existsSync(candidate)) return candidate;
+  }
+  return path.join(SCRIPT_DIR, ...segments);
+}
+
+export const SOURCE_HOOKS_DIR = resolveSourceDir('hooks');
+export const SOURCE_CONFIG = resolveSourceDir('config', 'default.yaml');
 const DEFAULT_INSTALL_BASE = path.join(os.homedir(), '.local', 'opt', 'gitblock');
 const DEFAULT_INSTALL_DIR = path.join(DEFAULT_INSTALL_BASE, 'hooks');
 const HOOK_FILES = ['validate-commit.mjs', 'prepare-commit-msg', 'commit-msg'];
@@ -1106,7 +1118,8 @@ async function runWipe({ yolo }) {
 
   const cwd = process.cwd();
   const ok = await askConfirm(
-    `This will wipe all trailers from the commit history in "${cwd}" and reset every commit's authorship to "${name} <${email}>", this action is destructive for contributors, do you want to proceed? [y/N]: `,
+    `\nThis will wipe all trailers from the commit history in "${cwd}" and reset every commit's authorship to "${name} <${email}>".\n
+     This action is destructive for contributors, do you want to proceed? [y/N]: `,
     { yolo, defaultYes: false },
   );
   if (!ok) {

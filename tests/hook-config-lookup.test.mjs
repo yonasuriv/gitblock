@@ -20,7 +20,7 @@ async function setupLayout(t, { localConfig, parentConfig }) {
   if (localConfig) await writeFile(path.join(hookDir, 'config.yaml'), localConfig);
   if (parentConfig) await writeFile(path.join(dir, 'config.yaml'), parentConfig);
   const msg = path.join(dir, 'msg');
-  await writeFile(msg, 'subject\n\nCo-authored-by: B <b@x.y>\n');
+  await writeFile(msg, 'subject\n\nReviewed-by: B <b@x.y>\n');
   return { dir, hookDir, msg };
 }
 
@@ -38,7 +38,7 @@ test('.githooks/config.yaml wins over unrelated repo-root config.yaml', async (t
     parentConfig: 'trailer: false\n', // would strip if wrongly chosen
   });
   runHook(hookDir, msg);
-  assert.equal(await readFile(msg, 'utf8'), 'subject\n\nCo-authored-by: B <b@x.y>\n');
+  assert.equal(await readFile(msg, 'utf8'), 'subject\n\nReviewed-by: B <b@x.y>\n');
 });
 
 test('parent config still used for the global layout', async (t) => {
@@ -47,5 +47,5 @@ test('parent config still used for the global layout', async (t) => {
     parentConfig: 'trailer: true\n',
   });
   runHook(hookDir, msg);
-  assert.equal(await readFile(msg, 'utf8'), 'subject\n\nCo-authored-by: B <b@x.y>\n');
+  assert.equal(await readFile(msg, 'utf8'), 'subject\n\nReviewed-by: B <b@x.y>\n');
 });

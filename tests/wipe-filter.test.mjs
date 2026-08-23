@@ -19,6 +19,21 @@ const FIXTURES = [
   ],
   ['subject\r\n\r\nCo-authored-by: B <b@x.y>\r\n', 'subject\r\n'],
   ['subject\n\nbody without trailers\n', 'subject\n\nbody without trailers\n'],
+  // Agent attribution lines
+  [
+    'feat: x\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nCo-Authored-By: Claude <noreply@anthropic.com>\n',
+    'feat: x\n',
+  ],
+  ['feat: x\n\nbody text\nClaude-Session: https://claude.ai/code/session_abc\n', 'feat: x\n\nbody text\n'],
+  ['fix: y\n\nhttps://claude.ai/code/session_xyz\n', 'fix: y\n'],
+  [
+    'docs: explain tooling\n\nWe evaluated claude and other agents before choosing this approach.\n',
+    'docs: explain tooling\n\nWe evaluated claude and other agents before choosing this approach.\n',
+  ],
+  [
+    'add thing\n\nbody\n\nReviewed-by: R <r@x.y>\n🤖 Generated with [Claude Code](https://claude.com)\n',
+    'add thing\n\nbody\n',
+  ],
 ];
 
 let filterFile;

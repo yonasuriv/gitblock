@@ -17,6 +17,11 @@ can be toggled without touching the hook scripts.
   directory).
 - **Trailer cleanup** — strips Git trailer blocks from commit messages on
   every commit, or keeps them, depending on the configuration.
+- **AI-attribution scrubbing** — always removes agent traces from commit
+  messages wherever they appear: `Co-authored-by:` trailers (even without a
+  blank-line separator), `Generated with ...` lines, `Claude-*:` key/value
+  trailers (e.g. `Claude-Session:`), and lines that consist solely of a
+  Claude/Anthropic URL. This applies in both trailer modes.
 - **Guardrails** — installs refuse to clobber hook files they don't own;
   `--force` overwrites them with timestamped `.bak-*` backups.
 - **Enabled switch** — set `enabled: false` and gitblock removes the global
@@ -24,9 +29,9 @@ can be toggled without touching the hook scripts.
 - **Verification** — `--verify` reports whether the hooks path is set
   and actually applied in the current repository.
 - **History rewrite** — `--wipe` rewrites the whole commit history (pushed and
-  unpushed): every trailer block is removed and each commit's author and
-  committer are reset to your git identity, so only the persona pushing
-  remains in the history.
+  unpushed): every trailer block and AI-attribution line is removed and each
+  commit's author and committer are reset to your git identity, so only the
+  persona pushing remains in the history.
 - **Non-interactive mode** — `--yolo` accepts every confirmation automatically
   for scripting and CI.
 - **Config CLI** — manage `logging`, `trailers`, `verbose`, and the global
@@ -184,7 +189,7 @@ The installed `config.yaml` lives next to the installed hooks directory
 |-----------|---------|-------------------------------------------------------------------------|
 | `enabled` | `true`  | When `false`, gitblock removes the global hooks path so nothing runs.  |
 | `logging` | `false` | Log each trailer action to the log file when enabled.                   |
-| `trailer` | `false` | When `true` trailers are kept; when `false` they are stripped.          |
+| `trailer` | `false` | When `true` trailers are kept; when `false` they are stripped. AI-attribution lines are always stripped regardless of this setting. |
 | `verbose` | `false` | Print errors to the terminal instead of failing silently.               |
 
 ### Managing the configuration

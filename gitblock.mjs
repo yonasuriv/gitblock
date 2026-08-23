@@ -1018,13 +1018,21 @@ async function runUninstall({ scope, yolo }) {
 // print (stripTrailers would return it as-is). Not portable to fix in POSIX
 // awk; git msg-filter input always ends with a newline.
 export const AWK_STRIP_TRAILERS = `function norm(s) { sub(/\\r$/, "", s); return s }
+function isattr(s) {
+  low = tolower(norm(s))
+  if (low ~ /^[ \\t]*co-authored-by[ \\t]*:/) return 1
+  if (low ~ /^[ \\t]*[^[:alnum:][:space:]]*[ \\t]*generated with[ \\t]+[^ \\t]/) return 1
+  if (low ~ /^[ \\t]*claude[a-z-]*[ \\t]*:/) return 1
+  if (low ~ /^[ \\t]*https?:\\/\\/[^ \\t]+[ \\t]*$/ && low ~ /(claude\\.ai|claude\\.com|anthropic\\.com)/) return 1
+  return 0
+}
 {
-  lines[NR] = $0
+  if (!isattr($0)) { m++; lines[m] = $0 }
 }
 END {
-    n = NR
-    while (n > 0 && norm(lines[n]) ~ /^[ \\t]*$/) n--
-    if (n == 0) { for (i = 1; i <= NR; i++) print lines[i]; exit }
+    while (m > 0 && norm(lines[m]) ~ /^[ \\t]*$/) m--
+    n = m
+    if (n == 0) exit
     cur = n; cnt = 0
     while (cur > 0) {
       while (cur > 0 && norm(lines[cur]) ~ /^[ \\t]/) cur--
@@ -1032,29 +1040,57 @@ END {
       if (norm(lines[cur]) !~ /^[^ \\t:]+[ \\t]*:/) break
       cnt++; cur--
     }
-    if (cnt == 0 || cur == 0) { for (i = 1; i <= NR; i++) print lines[i]; exit }
-    if (norm(lines[cur]) !~ /^[ \\t]*$/) { for (i = 1; i <= NR; i++) print lines[i]; exit }
+    if (cnt == 0 || cur == 0) { for (i = 1; i <= m; i++) print lines[i]; exit }
+    if (norm(lines[cur]) !~ /^[ \\t]*$/) { for (i = 1; i <= m; i++) print lines[i]; exit }
     end = cur - 1
     while (end > 0 && norm(lines[end]) ~ /^[ \\t]*$/) end--
     for (i = 1; i <= end; i++) print lines[i]
 }`;
 
 /**
- * Removes the final Git trailer block from a commit message. Returns the
- * message unchanged when no trailer block is present.
+ * Lines that identify AI-agent attribution. Removed wherever they appear,
+ * regardless of trailer-block positioning rules:
+ *  - Co-authored-by trailers (even without a blank-line separator)
+ *  - "Generated with ..." lines, optionally emoji-prefixed
+ *  - Claude-* key:value trailers (e.g. Claude-Session:)
+ *  - Lines that consist solely of a Claude/Anthropic URL
+ */
+export const ATTRIBUTION_LINE_PATTERNS = [
+  /^\s*co-authored-by\s*:/iu,
+  /^\s*(?:[\p{Extended_Pictographic}]\u{FE0F}?\s*)?generated\s+with\s+\S/iu,
+  /^\s*claude[a-z-]*\s*:/iu,
+  /^\s*https?:\/\/\S*(?:claude\.ai|anthropic\.com|claude\.com)\S*\s*$/iu,
+];
+
+export function isAttributionLine(line) {
+  return ATTRIBUTION_LINE_PATTERNS.some((pattern) => pattern.test(line));
+}
+
+/**
+ * Removes the final Git trailer block from a commit message, plus any
+ * AI-agent attribution lines. Returns the message unchanged when neither is
+ * present.
  */
 export function stripTrailers(message) {
   if (!message) {
     return message;
   }
 
+  // Attribution lines go first so their removal can expose a trailer block
+  // that the positioning rules below will then also strip. Newline style is
+  // detected before filtering and preserved through the rebuild.
   const newline = message.includes('\r\n') ? '\r\n' : '\n';
   const hasFinalNewline = message.endsWith('\n');
-  const lines = message.split(/\r?\n/);
-
-  if (hasFinalNewline) {
-    lines.pop();
+  const filtered = message.split(/\r?\n/).filter((line) => !isAttributionLine(line));
+  while (filtered.length > 0 && filtered[filtered.length - 1].trim() === '') {
+    filtered.pop();
   }
+  message = filtered.join(newline);
+  if (message === '') {
+    return '';
+  }
+
+  const lines = message.split(/\r?\n/);
 
   let contentEnd = lines.length;
 
@@ -1088,18 +1124,18 @@ export function stripTrailers(message) {
   }
 
   if (trailerCount === 0) {
-    return message;
+    return message + (hasFinalNewline ? newline : '');
   }
 
   // The first line is always the subject, never a trailer. A trailer block
   // reaching back to the start means the subject was misread — keep it.
   if (cursor === 0) {
-    return message;
+    return message + (hasFinalNewline ? newline : '');
   }
 
   // A valid trailer block must be separated from the body by a blank line.
   if (cursor > 0 && lines[cursor - 1].trim() !== '') {
-    return message;
+    return message + (hasFinalNewline ? newline : '');
   }
 
   const cleaned = lines.slice(0, cursor);

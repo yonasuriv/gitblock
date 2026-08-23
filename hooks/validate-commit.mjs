@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Cleans up the final Git trailer block from a commit message.
- * Behavior is controlled by the sibling `config.yaml` file:
+ * Cleans up the final Git trailer block and AI-agent attribution lines from
+ * a commit message. Behavior is controlled by the sibling `config.yaml`:
  *   - `enabled` when false the hook does nothing and exits successfully
  *   - `logging` enables the log file entry
  *   - `trailer` keeps the trailer block when true, strips it when false
+ *     (attribution lines are always stripped, in both modes)
  *   - `verbose` prints errors to the terminal, otherwise everything is silent
  * The hook exits successfully so the commit continues normally.
  */
@@ -19,6 +20,19 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 // Log destination. gitblock rewrites this line at install time when a
 // custom --path is supplied. Default: "$HOME/.git/logs".
 const GITBLOCK_LOG_FILE = path.join(os.homedir(), '.git', 'logs');
+
+// Lines that identify AI-agent attribution. Removed wherever they appear,
+// regardless of trailer-block positioning rules.
+const ATTRIBUTION_LINE_PATTERNS = [
+  /^\s*co-authored-by\s*:/iu,
+  /^\s*(?:[\p{Extended_Pictographic}]\u{FE0F}?\s*)?generated\s+with\s+\S/iu,
+  /^\s*claude[a-z-]*\s*:/iu,
+  /^\s*https?:\/\/\S*(?:claude\.ai|anthropic\.com|claude\.com)\S*\s*$/iu,
+];
+
+function isAttributionLine(line) {
+  return ATTRIBUTION_LINE_PATTERNS.some((pattern) => pattern.test(line));
+}
 
 const messagePath = process.argv[2];
 const config = await loadConfig();
@@ -43,19 +57,22 @@ async function removeTrailers(filePath, config) {
 
   const newline = source.includes('\r\n') ? '\r\n' : '\n';
   const hasFinalNewline = source.endsWith('\n');
+  const originalLineCount = source.split(/\r?\n/).length;
 
-  const lines = source.split(/\r?\n/);
-
-  if (hasFinalNewline) {
+  // Attribution lines go first so their removal can expose a trailer block
+  // that the positioning rules below will then also strip.
+  const lines = source.split(/\r?\n/).filter((line) => !isAttributionLine(line));
+  const attributionCount = originalLineCount - lines.length;
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
     lines.pop();
   }
 
-  let contentEnd = lines.length;
-
-  // Ignore trailing blank lines while locating the trailer block.
-  while (contentEnd > 0 && lines[contentEnd - 1].trim() === '') {
-    contentEnd -= 1;
+  if (lines.length === 0) {
+    await writeFile(filePath, '', 'utf8');
+    return;
   }
+
+  let contentEnd = lines.length;
 
   let cursor = contentEnd;
   let trailerCount = 0;
@@ -81,27 +98,19 @@ async function removeTrailers(filePath, config) {
     cursor -= 1;
   }
 
-  if (trailerCount === 0) {
-    return;
-  }
-
   // The first line of a commit message is always the subject, never a
   // trailer. If the trailer block reaches all the way back to the start of
   // the message, the subject itself is being misread as a trailer (e.g. a
   // conventional-commit subject like "chore: update") — keep it.
-  if (cursor === 0) {
-    return;
-  }
+  const subjectGuard = cursor === 0;
 
   // A valid trailer block must be separated from the body by a blank line.
-  if (lines[cursor - 1].trim() !== '') {
-    return;
-  }
+  const separated = cursor > 0 && lines[cursor - 1].trim() === '';
 
-  const trailerBlock = lines.slice(cursor, contentEnd);
+  const stripBlock = !config.trailer && !subjectGuard && separated && trailerCount > 0;
 
-  // Keep the trailer block when trailers are enabled, otherwise strip it.
-  if (!config.trailer) {
+  let output;
+  if (stripBlock) {
     const cleaned = lines.slice(0, cursor);
 
     // Remove the blank separator left behind by the trailer block.
@@ -109,20 +118,28 @@ async function removeTrailers(filePath, config) {
       cleaned.pop();
     }
 
-    const output =
+    output =
       cleaned.join(newline) +
       (hasFinalNewline && cleaned.length > 0 ? newline : '');
+  } else {
+    output = lines.join(newline) + (hasFinalNewline && lines.length > 0 ? newline : '');
+  }
 
+  if (output !== source) {
     await writeFile(filePath, output, 'utf8');
   }
 
-  if (config.logging) {
-    const verb = config.trailer ? 'made' : 'removed';
-    const trailerMessage = trailerBlock.join(', ').trim();
-    const entry =
-      `${trailerCount} commit trailer${trailerCount === 1 ? '' : 's'}. ` +
-      `${verb} on ${filePath}: ${trailerMessage}`;
-
+  if (config.logging && (attributionCount > 0 || (stripBlock && trailerCount > 0))) {
+    const parts = [];
+    if (attributionCount > 0) {
+      parts.push(
+        `${attributionCount} attribution line${attributionCount === 1 ? '' : 's'}`,
+      );
+    }
+    if (stripBlock && trailerCount > 0) {
+      parts.push(`${trailerCount} commit trailer${trailerCount === 1 ? '' : 's'}`);
+    }
+    const entry = `Removed ${parts.join(' and ')} on ${filePath}.`;
     await appendLog(entry, config.verbose);
   }
 }

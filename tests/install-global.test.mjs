@@ -58,11 +58,11 @@ test('CLI copy in <base>/bin finds sources in <base>/hooks (manual layout)', asy
   await fs.mkdir(path.join(base, 'bin'), { recursive: true });
   const hooksDir = path.join(base, 'hooks');
   await fs.mkdir(hooksDir, { recursive: true });
-  await fs.mkdir(path.join(base, 'config'), { recursive: true });
   for (const f of ['commit-msg', 'prepare-commit-msg', 'validate-commit.mjs']) {
-    await fs.copyFile(SOURCE_HOOKS_DIR + '/' + f, path.join(hooksDir, f));
+    await fs.copyFile(path.join(SOURCE_HOOKS_DIR, f), path.join(hooksDir, f));
   }
-  await fs.copyFile(SOURCE_CONFIG, path.join(base, 'config', 'default.yaml'));
+  // Real manual layout ships a flat config.yaml, not config/default.yaml.
+  await fs.copyFile(SOURCE_CONFIG, path.join(base, 'config.yaml'));
   await fs.copyFile(CLI, path.join(base, 'bin', 'gitblock.mjs'));
 
   const r = spawnSync(process.execPath, [path.join(base, 'bin', 'gitblock.mjs'), '--install', '--yolo'], {

@@ -51,7 +51,8 @@ const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
 
 // Sources live beside the script in a repo checkout or npm install, and one
 // level up when running from the manual layout's bin/ directory. Prefer the
-// nearer location; null when neither exists (compiled binaries).
+// nearer location; falls back to the repo-checkout path when neither exists
+// (compiled binaries).
 function resolveSourceDir(...segments) {
   for (const base of [SCRIPT_DIR, path.join(SCRIPT_DIR, '..')]) {
     const candidate = path.join(base, ...segments);
@@ -61,7 +62,15 @@ function resolveSourceDir(...segments) {
 }
 
 export const SOURCE_HOOKS_DIR = resolveSourceDir('hooks');
-export const SOURCE_CONFIG = resolveSourceDir('config', 'default.yaml');
+// The manual layout ships a flat config.yaml rather than config/default.yaml.
+const SOURCE_CONFIG_CANDIDATES = [
+  path.join(SCRIPT_DIR, 'config', 'default.yaml'),
+  path.join(SCRIPT_DIR, '..', 'config', 'default.yaml'),
+  path.join(SCRIPT_DIR, '..', 'config.yaml'),
+];
+export const SOURCE_CONFIG =
+  SOURCE_CONFIG_CANDIDATES.find((candidate) => existsSync(candidate)) ??
+  SOURCE_CONFIG_CANDIDATES[0];
 const DEFAULT_INSTALL_BASE = path.join(os.homedir(), '.local', 'opt', 'gitblock');
 const DEFAULT_INSTALL_DIR = path.join(DEFAULT_INSTALL_BASE, 'hooks');
 const HOOK_FILES = ['validate-commit.mjs', 'prepare-commit-msg', 'commit-msg'];

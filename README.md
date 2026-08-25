@@ -1,8 +1,23 @@
-# gitblock
+<div align="center">
+  <div style="display: inline-flex; align-items: center; gap: 12px;">
+    <img src=".github/assets/logo-icon.svg" alt="" height="48">
+    <picture>
+      <source media="(prefers-color-scheme: light)" srcset=".github/assets/text-logo-light.png">
+      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/text-logo-dark.png">
+      <img src=".github/assets/text-logo-white.png" alt="Gitblock Logo">
+    </picture>
+  </div>
+</div>
 
-gitblock is a zero-dependency Node.js tool that installs and manages Git
-commit hooks for trailer cleanup, plus a one-shot history rewriter that strips
-trailers out of an entire repository.
+---
+
+<div align="center">
+  <p>
+    <b>Gitblock</b> is a zero-dependency Node.js tool that installs and manages Git commit hooks for trailer cleanup, plus a one-shot history rewriter that stripstrailers out of an entire repository.
+  </p>
+</div>
+
+---
 
 It is built around a small `config.yaml` that lives next to the installed
 hooks, so logging, trailer handling, verbosity, and the global enabled state

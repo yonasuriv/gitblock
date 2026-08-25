@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Git Shield Logo</title>
+  <desc id="desc">A polished red shield containing a white Git branching mark.</desc>
+
+  <defs>
+    <linearGradient id="shieldGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b51d24"/>
+      <stop offset="0.55" stop-color="#98171d"/>
+      <stop offset="1" stop-color="#781116"/>
+    </linearGradient>
+    <linearGradient id="highlight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Shield -->
+  <path
+    d="M256 38
+       C304 59 357 73 417 82
+       L394 311
+       C387 382 333 435 256 476
+       C179 435 125 382 118 311
+       L95 82
+       C155 73 208 59 256 38Z"
+    fill="url(#shieldGradient)"/>
+
+  <!-- Subtle polished highlight -->
+  <path
+    d="M256 55
+       C211 72 164 84 116 91
+       L136 303
+       C141 357 179 399 236 435
+       C205 397 186 353 182 304
+       L165 111
+       C196 102 226 91 256 78Z"
+    fill="url(#highlight)"/>
+
+  <!-- Git branching mark -->
+  <g
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="30"
+    stroke-linecap="round"
+    stroke-linejoin="round">
+    <path d="M194 174V326"/>
+    <path d="M194 248C194 205 228 174 272 174H319"/>
+  </g>
+
+  <g fill="#ffffff">
+    <circle cx="194" cy="174" r="31"/>
+    <circle cx="194" cy="326" r="31"/>
+    <circle cx="319" cy="174" r="31"/>
+  </g>
+
+  <!-- Small inner cutouts keep the nodes crisp at tiny sizes -->
+  <g fill="#98171d">
+    <circle cx="194" cy="174" r="11"/>
+    <circle cx="194" cy="326" r="11"/>
+    <circle cx="319" cy="174" r="11"/>
+  </g>
+</svg>

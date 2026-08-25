@@ -1220,6 +1220,21 @@ async function runWipe({ yolo }) {
     'Done. All trailers have been wiped and every commit is now authored by ' +
       `"${name} <${email}>".`,
   );
+
+  const remoteCheck = spawnSync('git', ['remote'], { encoding: 'utf8' });
+  const remotes = remoteCheck.stdout.trim().split('\n').filter(Boolean);
+  if (remotes.length > 0) {
+    for (const remote of remotes) {
+      const pushResult = spawnSync(
+        'git',
+        ['push', '--force-with-lease', remote, '--all'],
+        { stdio: 'inherit' },
+      );
+      if (pushResult.status !== 0) {
+        console.error(`Warning: force push to "${remote}" failed. Run "git push --force-with-lease ${remote} --all" manually.`);
+      }
+    }
+  }
 }
 
 // Read a value from git config, repo-local first, then global.

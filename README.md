@@ -1,10 +1,10 @@
 <div align="center">
   <div style="display: inline-flex; align-items: center; gap: 12px;">
-    <img src=".github/assets/logo-icon.svg" alt="" height="48">
+    <img src=".github/assets/logo-icon.svg" alt="" height="70">
     <picture>
-      <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo-light.png">
-      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.png">
-      <img src=".github/assets/logo-dark.png" alt="Gitblock Logo">
+      <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo-dark.png">
+      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-light.png">
+      <img src=".github/assets/logo-dark.png" alt="Gitblock Logo"  height="64">
     </picture>
   </div>
 </div>
@@ -13,7 +13,7 @@
 
 <div align="center">
   <p>
-    <b>Gitblock</b> is a zero-dependency Node.js tool that installs and manages Git commit hooks for trailer cleanup, plus a one-shot history rewriter that stripstrailers out of an entire repository.
+    <b>Gitblock</b> is a zero-dependency Node.js tool that installs and manages Git commit hooks for trailer cleanup, <br>preventing the injection of vendor data in your commits.
   </p>
 </div>
 

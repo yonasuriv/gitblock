@@ -2,9 +2,9 @@
   <div style="display: inline-flex; align-items: center; gap: 12px;">
     <img src=".github/assets/logo-icon.svg" alt="" height="48">
     <picture>
-      <source media="(prefers-color-scheme: light)" srcset=".github/assets/text-logo-light.png">
-      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/text-logo-dark.png">
-      <img src=".github/assets/text-logo-white.png" alt="Gitblock Logo">
+      <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo-light.png">
+      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.png">
+      <img src=".github/assets/logo-dark.png" alt="Gitblock Logo">
     </picture>
   </div>
 </div>

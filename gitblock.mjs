@@ -133,7 +133,7 @@ export function parseArgs(argv) {
       opts.wipe = true;
     } else if (arg === '--verify') {
       opts.verify = true;
-    } else if (arg === '--yolo') {
+    } else if (arg === '--yolo' || arg === '-y') {
       opts.yolo = true;
     } else if (arg === '--help' || arg === '-h') {
       opts.help = true;
@@ -187,7 +187,7 @@ Flags:
   --verify           Report whether the global core.hooksPath is set and applied here.
   --wipe             Rewrite the whole commit history: strip every Git trailer and
                      reset each commit's author/committer to your git identity.
-  --yolo             Accept install and wipe confirmations automatically (no prompts).
+  -y, --yolo         Accept install and wipe confirmations automatically (no prompts).
   --uninstall        Remove the gitblock hooks (global, or local with --local).
   --local            Operate on this repository's .githooks install instead of the global one.
   --global           Force the global scope regardless of any local install.

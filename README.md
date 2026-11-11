@@ -64,7 +64,11 @@ can be toggled without touching the hook scripts.
 
 ## Installation
 
-### npm
+### npm (pending — not yet published)
+
+> **Pending** — `gitblock` is not published to the npm registry yet, so
+> `npm i -g gitblock` currently fails with `E404`. Use
+> [From source](#from-source) until the package is live.
 
 ```sh
 npm i -g gitblock
@@ -93,8 +97,9 @@ gitblock --version   # smoke test
 
 > **Note** — compiled binaries carry no hook sources on disk, so `--install`
 > is unavailable in that channel: run `gitblock --verify`, `config`,
-> `--wipe`, and `--update` from the binary, but install hooks via
-> `npm i -g gitblock && gitblock --install`.
+> `--wipe`, and `--update` from the binary, but install hooks from a source
+> checkout via `node gitblock.mjs --install` (or, once published,
+> `npm i -g gitblock && gitblock --install`).
 
 ### From source
 
